@@ -1,5 +1,7 @@
 // metal_box.inc.c
 
+#include "game/rigid_body.h"
+
 struct ObjectHitbox sMetalBoxHitbox = {
     /* interactType:      */ INTERACT_NONE,
     /* downOffset:        */ 0,
@@ -22,20 +24,28 @@ s32 check_if_moving_over_floor(f32 maxDist, f32 offset) {
     return (absf(floorHeight - o->oPosY) < maxDist);
 }
 
+void bhv_pushable_init(void) {
+    o->oPosY += 154.f;
+    struct RigidBody *body = allocate_rigid_body(RIGID_BODY_TYPE_CUBE, 50000.0f, 154.0f, &o->oPosVec, &gCurrentObject->transform);
+    body->obj = o;
+    //body->asleep = TRUE;
+    o->rigidBody = body;
+}
+
 void bhv_pushable_loop(void) {
     obj_set_hitbox(o, &sMetalBoxHitbox);
-    o->oForwardVel = 0.0f;
 
-    if (obj_check_if_collided_with_object(o, gMarioObject) && gMarioStates[0].flags & MARIO_PUSHING) {
+    s16 animID = gMarioObject->header.gfx.animInfo.animID;
+
+    if (obj_check_if_collided_with_object(o, gMarioObject) && 
+        (animID == MARIO_ANIM_SIDESTEP_RIGHT || animID == MARIO_ANIM_SIDESTEP_LEFT || animID == MARIO_ANIM_PUSHING)) {
         s16 angleToMario = obj_angle_to_object(o, gMarioObject);
-        if (abs_angle_diff(angleToMario, gMarioObject->oMoveAngleYaw) > 0x4000) {
-            o->oMoveAngleYaw = (s16)((gMarioObject->oMoveAngleYaw + 0x2000) & 0xc000);
-            if (check_if_moving_over_floor(8.0f, 150.0f)) {
-                o->oForwardVel = 4.0f;
-                cur_obj_play_sound_1(SOUND_ENV_METAL_BOX_PUSH);
-            }
+        if (abs_angle_diff(angleToMario, gMarioObject->oMoveAngleYaw) > 0x7000) {
+            Vec3f force;
+            force[0] = sins(gMarioObject->oMoveAngleYaw) * 5.f;
+            force[1] = 0.0f;
+            force[2] = coss(gMarioObject->oMoveAngleYaw) * 5.f;
+            rigid_body_add_force(o->rigidBody, &gMarioObject->oPosVec, force);
         }
     }
-
-    cur_obj_move_using_fvel_and_gravity();
 }

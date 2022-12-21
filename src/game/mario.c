@@ -1698,7 +1698,7 @@ s32 execute_mario_action(UNUSED struct Object *obj) {
     s32 inLoop = TRUE;
 
     if (gPlayer1Controller->buttonPressed & L_TRIG) {
-        struct Object *box = spawn_object(gMarioState->marioObj, MODEL_METAL_BOX, bhvMetalBoxRigidBody);
+        struct Object *box = spawn_object(gMarioState->marioObj, MODEL_METAL_BOX, bhvPushableMetalBox);
         box->oPosX = gMarioState->pos[0];
         box->oPosY = gMarioState->pos[1] + 500.f;
         box->oPosZ = gMarioState->pos[2];

@@ -4,13 +4,13 @@
 #include "macros.h"
 #include "engine/math_util.h"
 
-#define DAMPING 0.99f
+#define DAMPING 0.995f
 
 #define SLEEP_DETECTION_BIAS 0.96f
 #define SLEEP_DETECTION_THRESHOLD 3.f
 
 #define PENETRATION_BIAS 0.1f
-#define PENETRATION_MAX_DEPTH 1.f
+#define PENETRATION_MAX_DEPTH 0.1f
 
 #define GRAVITY_FORCE -3.f
 #define FRICTION 0.5f
@@ -50,20 +50,8 @@ struct RigidBody {
     struct Object *obj; // Pointer to the object this rigid body is linked to
 };
 
-// A specific contact point between two rigid bodies
-struct CollisionPoint {
-    Vec3f point;
-    Vec3f normal;
-    f32 penetration;
-};
-
-// An array of all contact points between two specific bodies
-struct Collision {
-    struct RigidBody *body1;
-    struct RigidBody *body2;
-    struct CollisionPoint points[20];
-    u32 numPoints;
-};
+struct RigidBody *allocate_rigid_body(u8 type, f32 mass, f32 size, Vec3f pos, Mat4 *transform);
+void deallocate_rigid_body(struct RigidBody *body);
+void rigid_body_add_force(struct RigidBody *body, Vec3f contactPoint, Vec3f force);
 
 void do_rigid_body_step(void);
-void bhv_rigid_cube_init(void);

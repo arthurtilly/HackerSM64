@@ -123,6 +123,7 @@ void bhv_piranha_plant_waking_bubbles_loop(void);
 void bhv_purple_switch_loop(void);
 void bhv_hidden_object_loop(void);
 void bhv_breakable_box_loop(void);
+void bhv_pushable_init(void);
 void bhv_pushable_loop(void);
 void bhv_init_room(void);
 void bhv_small_water_wave_loop(void);

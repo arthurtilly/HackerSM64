@@ -22,7 +22,7 @@
 #include "puppyprint.h"
 #include "puppylights.h"
 #include "profiling.h"
-#include "rigidbody.h"
+#include "rigid_body.h"
 
 
 /**

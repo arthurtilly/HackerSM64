@@ -2,53 +2,13 @@
 
 #include "config.h"
 #include "sm64.h"
-#include "rigidbody.h"
+#include "rigid_body.h"
+#include "rigid_body_collision.h"
 #include "object_list_processor.h"
 
 struct RigidBody gRigidBodies[10];
 
-struct Collision gCollisions[20];
-u32 gNumCollisions = 0;
-
 f32 dt = 1.f/NUM_RIGID_BODY_STEPS;
-
-struct RigidBody gRigidBodyFloor = {
-    TRUE,
-    RIGID_BODY_TYPE_TRIANGLE,
-    TRUE,
-    FALSE,
-
-    0.f,
-    0.f,
-    0.f,
-    0.f,
-    {0.f, 0.f, 0.f},
-    {0.f, 0.f, 0.f, 1.f},
-
-    {0.f, 0.f, 0.f},
-    {0.f, 0.f, 0.f},
-    {0.f, 0.f, 0.f},
-    {0.f, 0.f, 0.f},
-
-    NULL,
-    {0.f, 0.f, 0.f, 0.f,
-     0.f, 0.f, 0.f, 0.f,
-     0.f, 0.f, 0.f, 0.f,
-     0.f, 0.f, 0.f, 0.f},
-
-    NULL
-};
-
-void debug_print_vec(Vec4f vec) {
-    print_text_fmt_int(20, 20, "%d", (s32)(vec[0]*1));
-    print_text_fmt_int(80, 20, "%d", (s32)(vec[1]*1));
-    print_text_fmt_int(140, 20, "%d", (s32)(vec[2]*1));
-    print_text_fmt_int(200, 20, "%d", (s32)(vec[3]*1));
-}
-
-void debug_confirm(void) {
-    print_text(20,40,"REACHED");
-}
 
 /// Set a vector to another vector scaled by a constant.
 void vec3f_scale(Vec3f dest, Vec3f src, f32 scale) {
@@ -211,6 +171,21 @@ void rigid_body_collision_impulse(struct RigidBody *body1, struct RigidBody *bod
     }
 }
 
+/// Updates the rigid body's transformation matrix and its inertia tensor.
+void rigid_body_update_matrix(struct RigidBody *body) {
+    mtxf_from_quat(body->angleQuat, *body->transform);
+
+    // Calculate the inverse of the inertia tensor.
+    // will need to be modified a ton for rigid bodies that aren't uniform size in all dimensions
+	f32 i = 1.f / ((body->size * body->size) * body->mass);
+    mtxf_identity(body->invInertia);
+    body->invInertia[0][0] = i;
+    body->invInertia[1][1] = i;
+    body->invInertia[2][2] = i;
+
+    vec3f_copy((*body->transform)[3], body->centerOfMass);
+}
+
 /// Allocate a rigid body and return a pointer to it.
 struct RigidBody *allocate_rigid_body(u8 type, f32 mass, f32 size, Vec3f pos, Mat4 *transform) {
     // Search list for deallocated rigid body
@@ -255,31 +230,21 @@ void deallocate_rigid_body(struct RigidBody *body) {
 
 /// Applies a force to a rigid body at a given point.
 void rigid_body_add_force(struct RigidBody *body, Vec3f contactPoint, Vec3f force) {
+    Vec3f scaledForce;
+    vec3f_scale(scaledForce, force, body->mass);
+
     // Calculate force
-    vec3f_add(body->netForce, force);
+    vec3f_add(body->netForce, scaledForce);
     
     // Calculate torque
     // τ = r x F
     Vec3f torque, contactOffset;
     vec3f_copy(contactOffset, contactPoint);
     vec3f_sub(contactOffset, body->centerOfMass);
-    vec3f_cross(torque, force, contactOffset);
+    vec3f_cross(torque, scaledForce, contactOffset);
     vec3f_add(body->netTorque, torque);
-}
 
-/// Updates the rigid body's transformation matrix and its inertia tensor.
-void rigid_body_update_matrix(struct RigidBody *body) {
-    mtxf_from_quat(body->angleQuat, *body->transform);
-
-    // Calculate the inverse of the inertia tensor.
-    // will need to be modified a ton for rigid bodies that aren't uniform size in all dimensions
-	f32 i = 1.f / ((body->size * body->size) * body->mass);
-    mtxf_identity(body->invInertia);
-    body->invInertia[0][0] = i;
-    body->invInertia[1][1] = i;
-    body->invInertia[2][2] = i;
-
-    vec3f_copy((*body->transform)[3], body->centerOfMass);
+    body->asleep = FALSE;
 }
 
 /// Updates the position of a rigid body based on its velocity.
@@ -339,7 +304,7 @@ void rigid_body_update_velocity(struct RigidBody *body) {
     // Apply Gravity
     // Fg = m * g
     Vec3f gravityForce;
-    vec3f_set(gravityForce, 0.f, GRAVITY_FORCE * body->mass, 0.f);
+    vec3f_set(gravityForce, 0.f, GRAVITY_FORCE, 0.f);
     rigid_body_add_force(body, body->centerOfMass, gravityForce);
 
     // Calculate linear velocity
@@ -369,59 +334,6 @@ void rigid_body_update_velocity(struct RigidBody *body) {
 
 }
 
-/// Initializes a collision struct. 
-struct Collision *init_collision(struct RigidBody *body1, struct RigidBody *body2) {
-    struct Collision *collision = &gCollisions[gNumCollisions];
-    gNumCollisions++;
-
-    collision->body1 = body1;
-    collision->body2 = body2;
-    collision->numPoints = 0;
-    return collision;
-}
-
-/// Adds a contact point to the given collision struct.
-void add_collision(struct Collision *collision, Vec3f point, Vec3f normal, f32 penetration) {
-    struct CollisionPoint *colPoint = &collision->points[collision->numPoints];
-    vec3f_copy(colPoint->point, point);
-    vec3f_copy(colPoint->normal, normal);
-    colPoint->penetration = penetration;
-    collision->numPoints++;
-}
-
-f32 find_floor(f32 x, f32 y, f32 z, struct Surface **floor);
-
-/// Checks for collisions between the given rigid body and the floor.
-void rigid_body_check_collisions(struct RigidBody *body) {
-    struct Collision *col = init_collision(body, &gRigidBodyFloor);
-    u32 i =0;
-    for (s32 x = -1; x < 2; x+=2) {
-        for (s32 y = -1; y < 2; y+=2) {
-            for (s32 z = -1; z < 2; z+=2) {
-                Vec3f vertex;
-                vec3f_set(vertex, x * body->size, y * body->size, z * body->size);
-                
-                Vec3f vertexWorld;
-                linear_mtxf_mul_vec3f_and_translate(*body->transform, vertexWorld, vertex);
-
-                Vec3f normal;
-                struct Surface *floor;
-                vec3f_set(normal, 0.f, 1.f, 0.f);
-                f32 floorHeight = find_floor(vertexWorld[0], vertexWorld[1], vertexWorld[2], &floor);
-                if (floor == NULL) {
-                    vec3f_set(normal, 0.f, 1.f, 0.f);
-                } else {
-                    vec3f_copy(normal, &floor->normal.x);
-                }
-                if (vertexWorld[1] < floorHeight) {
-                    add_collision(col, vertexWorld, normal, floorHeight - vertexWorld[1]);
-                }
-                i++;
-            }
-        }
-    }
-}
-
 /// Apply impulses to rigid bodies to resolve stored collisions.
 void apply_impulses(void) {
     for (u32 i = 0; i < gNumCollisions; i++) {
@@ -438,19 +350,19 @@ void apply_impulses(void) {
 void do_rigid_body_step(void) {
     gNumCollisions = 0;
     
+    if (gPlayer1Controller->buttonPressed & D_JPAD) {
+        Vec3f force;
+        vec3f_set(force, 20.f * sins(gMarioState->faceAngle[1]), 30.f, 20.f * coss(gMarioState->faceAngle[1]));
+        rigid_body_add_force(&gRigidBodies[0], gMarioState->pos, force);
+    }
+
     // Check collisions
     for (u32 i = 0; i < 10; i++) {
         if (gRigidBodies[i].allocated) {
             rigid_body_check_collisions(&gRigidBodies[i]);
         }
     }
-    if (gPlayer1Controller->buttonPressed & D_JPAD) {
-        Vec3f force;
-        vec3f_set(force, 20.f * sins(gMarioState->faceAngle[1]), 30.f, 20.f * coss(gMarioState->faceAngle[1]));
-        vec3f_scale(force, force, gRigidBodies[0].mass);
-        rigid_body_add_force(&gRigidBodies[0], gMarioState->pos, force);
-        gRigidBodies[0].asleep = FALSE;
-    }
+
     // Update velocity
     for (u32 i = 0; i < 10; i++) {
         if (gRigidBodies[i].allocated) {
@@ -467,10 +379,4 @@ void do_rigid_body_step(void) {
             rigid_body_update_position(&gRigidBodies[i]);
         }
     }
-}
-
-/// Behavior for a rigid cube.
-void bhv_rigid_cube_init(void) {
-    struct RigidBody *body = allocate_rigid_body(RIGID_BODY_TYPE_CUBE, 50000.0f, 154.0f, &gCurrentObject->oPosVec, &gCurrentObject->transform);
-    body->obj = gCurrentObject;
 }

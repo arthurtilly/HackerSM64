@@ -684,7 +684,7 @@ void push_or_sidle_wall(struct MarioState *m, Vec3f startPos) {
             dWallAngle = wallAngle - m->faceAngle[1];
         }
 
-        if (m->wall == NULL || dWallAngle <= -DEGREES(160) || dWallAngle >= DEGREES(160)) {
+        if (m->wall == NULL || dWallAngle <= -DEGREES(140) || dWallAngle >= DEGREES(140)) {
             m->flags |= MARIO_PUSHING;
             set_mario_animation(m, MARIO_ANIM_PUSHING);
             play_step_sound(m, 6, 18);
