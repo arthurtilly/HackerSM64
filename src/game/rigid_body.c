@@ -3,7 +3,6 @@
 #include "config.h"
 #include "sm64.h"
 #include "rigid_body.h"
-#include "rigid_body_collision.h"
 #include "object_list_processor.h"
 
 struct RigidBody gRigidBodies[10];
@@ -177,7 +176,7 @@ void rigid_body_update_matrix(struct RigidBody *body) {
 
     // Calculate the inverse of the inertia tensor.
     // will need to be modified a ton for rigid bodies that aren't uniform size in all dimensions
-	f32 i = 1.f / ((body->size * body->size) * body->mass);
+	f32 i = 1.f / ((body->size[0] * body->size[0]) * body->mass);
     mtxf_identity(body->invInertia);
     body->invInertia[0][0] = i;
     body->invInertia[1][1] = i;
@@ -187,12 +186,12 @@ void rigid_body_update_matrix(struct RigidBody *body) {
 }
 
 /// Allocate a rigid body and return a pointer to it.
-struct RigidBody *allocate_rigid_body(u8 type, f32 mass, f32 size, Vec3f pos, Mat4 *transform) {
+struct RigidBody *allocate_rigid_body(struct MeshInfo *mesh, f32 mass, Vec3f size, Vec3f pos, Mat4 *transform) {
     // Search list for deallocated rigid body
     for (u32 i = 0; i < 10; i++) {
         if (!gRigidBodies[i].allocated) {
             gRigidBodies[i].allocated = TRUE;
-            gRigidBodies[i].type = type;
+            gRigidBodies[i].mesh = mesh;
             gRigidBodies[i].mass = mass;
             if (mass != 0.f) {
                 gRigidBodies[i].invMass = 1.0f / mass;
@@ -201,8 +200,9 @@ struct RigidBody *allocate_rigid_body(u8 type, f32 mass, f32 size, Vec3f pos, Ma
                 gRigidBodies[i].invMass = 0.0f;
                 gRigidBodies[i].isStatic = TRUE;
             }
+            gRigidBodies[i].diagonal = sqrtf(size[0] * size[0] + size[1] * size[1] + size[2] * size[2]);
             gRigidBodies[i].asleep = FALSE;
-            gRigidBodies[i].size = size;
+            vec3f_copy(gRigidBodies[i].size, size);
             vec3f_copy(gRigidBodies[i].centerOfMass, pos);
             gRigidBodies[i].angleQuat[0] = 0.0f;
             gRigidBodies[i].angleQuat[1] = 0.0f;
@@ -351,9 +351,13 @@ void do_rigid_body_step(void) {
     gNumCollisions = 0;
     
     if (gPlayer1Controller->buttonPressed & D_JPAD) {
-        Vec3f force;
-        vec3f_set(force, 20.f * sins(gMarioState->faceAngle[1]), 30.f, 20.f * coss(gMarioState->faceAngle[1]));
-        rigid_body_add_force(&gRigidBodies[0], gMarioState->pos, force);
+        for (u32 i = 0; i < 10; i++) {
+            if (gRigidBodies[i].allocated) {
+                Vec3f force;
+                vec3f_set(force, 20.f * sins(gMarioState->faceAngle[1]), 30.f, 20.f * coss(gMarioState->faceAngle[1]));
+                rigid_body_add_force(&gRigidBodies[i], gMarioState->pos, force);
+            }
+        }
     }
 
     // Check collisions

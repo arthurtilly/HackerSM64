@@ -4,11 +4,11 @@
 
 struct ObjectHitbox sMetalBoxHitbox = {
     /* interactType:      */ INTERACT_NONE,
-    /* downOffset:        */ 0,
+    /* downOffset:        */ 150,
     /* damageOrCoinValue: */ 0,
     /* health:            */ 1,
     /* numLootCoins:      */ 0,
-    /* radius:            */ 220,
+    /* radius:            */ 250,
     /* height:            */ 300,
     /* hurtboxRadius:     */ 220,
     /* hurtboxHeight:     */ 300,
@@ -24,11 +24,16 @@ s32 check_if_moving_over_floor(f32 maxDist, f32 offset) {
     return (absf(floorHeight - o->oPosY) < maxDist);
 }
 
+Vec3f sPushableBoxSize = { 154.f, 154.f, 154.f };
+
+f32 find_floor_height(f32 x, f32 y, f32 z);
+
 void bhv_pushable_init(void) {
     o->oPosY += 154.f;
-    struct RigidBody *body = allocate_rigid_body(RIGID_BODY_TYPE_CUBE, 50000.0f, 154.0f, &o->oPosVec, &gCurrentObject->transform);
+    struct RigidBody *body = allocate_rigid_body(&Cube_Mesh, 50000.0f, sPushableBoxSize, &o->oPosVec, &gCurrentObject->transform);
     body->obj = o;
-    //body->asleep = TRUE;
+    f32 floorHeight = find_floor_height(o->oPosX, o->oPosY, o->oPosZ);
+    if (o->oPosY - floorHeight < 5.f) body->asleep = TRUE;
     o->rigidBody = body;
 }
 
