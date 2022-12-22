@@ -5,9 +5,19 @@
 #include "rigid_body.h"
 #include "object_list_processor.h"
 
-struct RigidBody gRigidBodies[10];
+struct RigidBody gRigidBodies[MAX_RIGID_BODIES];
 
 f32 dt = 1.f/NUM_RIGID_BODY_STEPS;
+
+#ifdef PUPPYPRINT_DEBUG
+u32 pNumTrisChecked;
+u32 pNumCols;
+u32 pNumColsTrunc;
+u32 pNumVertexChecks;
+u32 pNumEdgeChecks;
+u32 pNumFaceChecks;
+u32 pNumImpulsesApplied;
+#endif
 
 /// Set a vector to another vector scaled by a constant.
 void vec3f_scale(Vec3f dest, Vec3f src, f32 scale) {
@@ -68,12 +78,20 @@ void quat_normalize(Quat quat) {
 
 /// Resolve a collision impulse between two rigid bodies.
 void rigid_body_collision_impulse(struct RigidBody *body1, struct RigidBody *body2, Vec3f hitPoint, Vec3f normal, f32 penetration) {
-    u32 doSecondBody = (body2 != NULL) || (body2->isStatic);
+    u32 doSecondBody = (!(body2->isStatic));
     f32 body1InvMass = body1->invMass;
     f32 body2InvMass = (doSecondBody ? body2->invMass : 0.f);
-    if (body1->isStatic || body1->asleep) {
+    if (body1->isStatic) {
         return;
     }
+
+    if (doSecondBody) {
+        body1->asleep = FALSE;
+        body2->asleep = FALSE;
+    }
+#ifdef PUPPYPRINT_DEBUG
+    pNumImpulsesApplied++;
+#endif
 
     // Determine the relative velocity (dv) of the two bodies at the point of impact.
     Vec3f r0, r1, v0, v1, dv;
@@ -107,7 +125,7 @@ void rigid_body_collision_impulse(struct RigidBody *body1, struct RigidBody *bod
     f32 kNormal = body1InvMass + body2InvMass + vec3f_dot(normal, temp1_1);
 
     f32 vn = vec3f_dot(dv, normal);
-    f32 bias = PENETRATION_BIAS * MAX(0.f, penetration - PENETRATION_MAX_DEPTH) * NUM_RIGID_BODY_STEPS;
+    f32 bias = PENETRATION_BIAS * MAX(0.f, penetration - PENETRATION_MIN_DEPTH) * NUM_RIGID_BODY_STEPS;
 
     f32 dPn = MAX(((-vn + bias) / kNormal), 0.f);
 
@@ -188,36 +206,38 @@ void rigid_body_update_matrix(struct RigidBody *body) {
 /// Allocate a rigid body and return a pointer to it.
 struct RigidBody *allocate_rigid_body(struct MeshInfo *mesh, f32 mass, Vec3f size, Vec3f pos, Mat4 *transform) {
     // Search list for deallocated rigid body
-    for (u32 i = 0; i < 10; i++) {
-        if (!gRigidBodies[i].allocated) {
-            gRigidBodies[i].allocated = TRUE;
-            gRigidBodies[i].mesh = mesh;
-            gRigidBodies[i].mass = mass;
+    for (u32 i = 0; i < MAX_RIGID_BODIES; i++) {
+        struct RigidBody *body = &gRigidBodies[i];
+        if (!body->allocated) {
+            body->allocated = TRUE;
+            body->hasGravity = TRUE;
+            body->mesh = mesh;
+            body->mass = mass;
             if (mass != 0.f) {
-                gRigidBodies[i].invMass = 1.0f / mass;
-                gRigidBodies[i].isStatic = FALSE;
+                body->invMass = 1.0f / mass;
+                body->isStatic = FALSE;
             } else {
-                gRigidBodies[i].invMass = 0.0f;
-                gRigidBodies[i].isStatic = TRUE;
+                body->invMass = 0.0f;
+                body->isStatic = TRUE;
             }
-            gRigidBodies[i].diagonal = sqrtf(size[0] * size[0] + size[1] * size[1] + size[2] * size[2]);
-            gRigidBodies[i].asleep = FALSE;
-            vec3f_copy(gRigidBodies[i].size, size);
-            vec3f_copy(gRigidBodies[i].centerOfMass, pos);
-            gRigidBodies[i].angleQuat[0] = 0.0f;
-            gRigidBodies[i].angleQuat[1] = 0.0f;
-            gRigidBodies[i].angleQuat[2] = 0.0f;
-            gRigidBodies[i].angleQuat[3] = 1.0f;
-            gRigidBodies[i].motion = 10.0f;
-            vec3f_set(gRigidBodies[i].linearVel, 0.0f, 0.0f, 0.0f);
-            vec3f_set(gRigidBodies[i].angularVel, 0.0f, 0.0f, 0.0f);
-            vec3f_set(gRigidBodies[i].netForce, 0.0f, 0.0f, 0.0f);
-            vec3f_set(gRigidBodies[i].netTorque, 0.0f, 0.0f, 0.0f);
+            body->diagonal = sqrtf(size[0] * size[0] + size[1] * size[1] + size[2] * size[2]);
+            body->asleep = FALSE;
+            vec3f_copy(body->size, size);
+            vec3f_copy(body->centerOfMass, pos);
+            body->angleQuat[0] = 0.0f;
+            body->angleQuat[1] = 0.0f;
+            body->angleQuat[2] = 0.0f;
+            body->angleQuat[3] = 1.0f;
+            body->motion = 10.0f;
+            vec3f_set(body->linearVel, 0.0f, 0.0f, 0.0f);
+            vec3f_set(body->angularVel, 0.0f, 0.0f, 0.0f);
+            vec3f_set(body->netForce, 0.0f, 0.0f, 0.0f);
+            vec3f_set(body->netTorque, 0.0f, 0.0f, 0.0f);
 
-            gRigidBodies[i].transform = transform;
-            rigid_body_update_matrix(&gRigidBodies[i]);
+            body->transform = transform;
+            rigid_body_update_matrix(body);
 
-            return &gRigidBodies[i];
+            return body;
         }
     }
     return NULL;
@@ -228,23 +248,36 @@ void deallocate_rigid_body(struct RigidBody *body) {
     body->allocated = FALSE;
 }
 
-/// Applies a force to a rigid body at a given point.
-void rigid_body_add_force(struct RigidBody *body, Vec3f contactPoint, Vec3f force) {
-    Vec3f scaledForce;
-    vec3f_scale(scaledForce, force, body->mass);
+u32 rigid_bodies_near(struct RigidBody *body1, struct RigidBody *body2) {
+    Vec3f dist;
+    f32 maxDist = body1->diagonal + body2->diagonal;
+    vec3f_sub2(dist, body1->centerOfMass, body2->centerOfMass);
+    return (vec3f_dot(dist, dist) <= maxDist * maxDist);
+}
 
+/// Applies a force to a rigid body at a given point.
+void rigid_body_add_force(struct RigidBody *body, Vec3f contactPoint, Vec3f force, u32 wake) {
     // Calculate force
-    vec3f_add(body->netForce, scaledForce);
+    vec3f_add(body->netForce, force);
     
     // Calculate torque
     // τ = r x F
     Vec3f torque, contactOffset;
     vec3f_copy(contactOffset, contactPoint);
     vec3f_sub(contactOffset, body->centerOfMass);
-    vec3f_cross(torque, scaledForce, contactOffset);
+    vec3f_cross(torque, force, contactOffset);
     vec3f_add(body->netTorque, torque);
 
-    body->asleep = FALSE;
+    if (wake) {
+        body->asleep = FALSE;
+        body->motion = 10.f;
+        for (u32 i = 0; i < MAX_RIGID_BODIES; i++) {
+            if ((gRigidBodies[i].allocated) && (body != &gRigidBodies[i]) && (rigid_bodies_near(body, &gRigidBodies[i]))) {
+                gRigidBodies[i].asleep = FALSE;
+                gRigidBodies[i].motion = 10.f;
+            }
+        }
+    }
 }
 
 /// Updates the position of a rigid body based on its velocity.
@@ -303,9 +336,11 @@ void rigid_body_update_velocity(struct RigidBody *body) {
 
     // Apply Gravity
     // Fg = m * g
-    Vec3f gravityForce;
-    vec3f_set(gravityForce, 0.f, GRAVITY_FORCE, 0.f);
-    rigid_body_add_force(body, body->centerOfMass, gravityForce);
+    if (body->hasGravity) {
+        Vec3f gravityForce;
+        vec3f_set(gravityForce, 0.f, GRAVITY_FORCE * body->mass, 0.f);
+        rigid_body_add_force(body, body->centerOfMass, gravityForce, FALSE);
+    }
 
     // Calculate linear velocity
     // Δv = (F / m) * Δt
@@ -331,7 +366,6 @@ void rigid_body_update_velocity(struct RigidBody *body) {
         vec3f_set(body->linearVel, 0.0f, 0.0f, 0.0f);
         vec3f_set(body->angularVel, 0.0f, 0.0f, 0.0f);
     }
-
 }
 
 /// Apply impulses to rigid bodies to resolve stored collisions.
@@ -351,24 +385,22 @@ void do_rigid_body_step(void) {
     gNumCollisions = 0;
     
     if (gPlayer1Controller->buttonPressed & D_JPAD) {
-        for (u32 i = 0; i < 10; i++) {
+        for (u32 i = 0; i < 1; i++) {
             if (gRigidBodies[i].allocated) {
                 Vec3f force;
-                vec3f_set(force, 20.f * sins(gMarioState->faceAngle[1]), 30.f, 20.f * coss(gMarioState->faceAngle[1]));
-                rigid_body_add_force(&gRigidBodies[i], gMarioState->pos, force);
+                vec3f_set(force, 40.f * sins(gMarioState->faceAngle[1]), 40.f, 40.f * coss(gMarioState->faceAngle[1]));
+                rigid_body_add_force(&gRigidBodies[i], gMarioState->pos, force, TRUE);
             }
         }
     }
 
     // Check collisions
-    for (u32 i = 0; i < 10; i++) {
-        if (gRigidBodies[i].allocated) {
-            rigid_body_check_collisions(&gRigidBodies[i]);
-        }
+    for (u32 i = 0; i < MAX_RIGID_BODIES; i++) {
+        rigid_body_do_collision(i);
     }
 
     // Update velocity
-    for (u32 i = 0; i < 10; i++) {
+    for (u32 i = 0; i < MAX_RIGID_BODIES; i++) {
         if (gRigidBodies[i].allocated) {
             rigid_body_update_velocity(&gRigidBodies[i]);
         }
@@ -378,7 +410,7 @@ void do_rigid_body_step(void) {
         apply_impulses();
     }
     // Update position
-    for (u32 i = 0; i < 10; i++) {
+    for (u32 i = 0; i < MAX_RIGID_BODIES; i++) {
         if (gRigidBodies[i].allocated) {
             rigid_body_update_position(&gRigidBodies[i]);
         }

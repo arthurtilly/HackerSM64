@@ -49,4 +49,4 @@ extern u32 gNumCollisions;
 
 extern struct MeshInfo Cube_Mesh;
 
-void rigid_body_check_collisions(struct RigidBody *body);
+void rigid_body_do_collision(u32 bodyIndex);

@@ -103,6 +103,10 @@ void unload_object(struct Object *obj) {
     obj->header.gfx.node.flags &= ~(GRAPH_RENDER_BILLBOARD | GRAPH_RENDER_ACTIVE);
 
     deallocate_object(&gFreeObjectList, &obj->header);
+
+    if (obj->rigidBody != NULL) {
+        deallocate_rigid_body(obj->rigidBody);
+    }
 }
 
 /**

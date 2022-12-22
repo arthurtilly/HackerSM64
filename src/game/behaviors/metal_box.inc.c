@@ -30,7 +30,7 @@ f32 find_floor_height(f32 x, f32 y, f32 z);
 
 void bhv_pushable_init(void) {
     o->oPosY += 154.f;
-    struct RigidBody *body = allocate_rigid_body(&Cube_Mesh, 50000.0f, sPushableBoxSize, &o->oPosVec, &gCurrentObject->transform);
+    struct RigidBody *body = allocate_rigid_body(&Cube_Mesh, 5.f, sPushableBoxSize, &o->oPosVec, &gCurrentObject->transform);
     body->obj = o;
     f32 floorHeight = find_floor_height(o->oPosX, o->oPosY, o->oPosZ);
     if (o->oPosY - floorHeight < 5.f) body->asleep = TRUE;
@@ -47,10 +47,15 @@ void bhv_pushable_loop(void) {
         s16 angleToMario = obj_angle_to_object(o, gMarioObject);
         if (abs_angle_diff(angleToMario, gMarioObject->oMoveAngleYaw) > 0x7000) {
             Vec3f force;
-            force[0] = sins(gMarioObject->oMoveAngleYaw) * 5.f;
+            force[0] = sins(gMarioObject->oMoveAngleYaw) * 30.f;
             force[1] = 0.0f;
-            force[2] = coss(gMarioObject->oMoveAngleYaw) * 5.f;
-            rigid_body_add_force(o->rigidBody, &gMarioObject->oPosVec, force);
+            force[2] = coss(gMarioObject->oMoveAngleYaw) * 30.f;
+            rigid_body_add_force(o->rigidBody, &gMarioObject->oPosVec, force, TRUE);
+            o->rigidBody->motion = 10.f;
         }
+    }
+
+    if (o->oPosY < -5000.f) {
+        mark_obj_for_deletion(o);
     }
 }

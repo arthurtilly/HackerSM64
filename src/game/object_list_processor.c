@@ -447,6 +447,10 @@ void unload_objects_from_area(UNUSED s32 unused, s32 areaIndex) {
             }
         }
     }
+
+    for (i = 0; i < MAX_RIGID_BODIES; i++) {
+        gRigidBodies[i].allocated = FALSE;
+    }
 }
 
 /**
@@ -632,6 +636,15 @@ void update_objects(UNUSED s32 unused) {
     // If time stop is not active, unload object surfaces
     clear_dynamic_surfaces();
 
+#ifdef PUPPYPRINT_DEBUG
+    pNumTrisChecked = 0;
+    pNumCols = 0;
+    pNumColsTrunc = 0;
+    pNumVertexChecks = 0;
+    pNumEdgeChecks = 0;
+    pNumFaceChecks = 0;
+    pNumImpulsesApplied = 0;
+#endif
     for (u32 i = 0; i < NUM_RIGID_BODY_STEPS; i++) {
         do_rigid_body_step();
     }

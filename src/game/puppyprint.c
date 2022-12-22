@@ -589,6 +589,25 @@ void puppyprint_render_standard(void) {
     // finish_blank_box();
 }
 
+#include "rigid_body.h"
+
+void puppyprint_rigid_body(void) {
+    char textBytes[90];
+    sprintf(textBytes, "Contact Points: %d/%d", pNumColsTrunc, pNumCols);
+    print_small_text(16, 16, textBytes, PRINT_TEXT_ALIGN_LEFT, PRINT_ALL, FONT_OUTLINE);
+
+    sprintf(textBytes, "Tris Checked: %d", pNumTrisChecked);
+    print_small_text(16, 40, textBytes, PRINT_TEXT_ALIGN_LEFT, PRINT_ALL, FONT_OUTLINE);
+    sprintf(textBytes, "Vertices: %d", pNumVertexChecks);
+    print_small_text(28, 52, textBytes, PRINT_TEXT_ALIGN_LEFT, PRINT_ALL, FONT_OUTLINE);
+    sprintf(textBytes, "Edges: %d", pNumEdgeChecks);
+    print_small_text(28, 64, textBytes, PRINT_TEXT_ALIGN_LEFT, PRINT_ALL, FONT_OUTLINE);
+    sprintf(textBytes, "Faces: %d", pNumFaceChecks);
+    print_small_text(28, 76, textBytes, PRINT_TEXT_ALIGN_LEFT, PRINT_ALL, FONT_OUTLINE);
+
+    sprintf(textBytes, "Impulses: %d", pNumImpulsesApplied);
+    print_small_text(16, 100, textBytes, PRINT_TEXT_ALIGN_LEFT, PRINT_ALL, FONT_OUTLINE);
+}
 
 
 void puppyprint_render_minimal(void) {
@@ -597,9 +616,8 @@ void puppyprint_render_minimal(void) {
 
 struct PuppyPrintPage ppPages[] = {
     {&puppyprint_render_standard,  "Standard" },
-    {&puppyprint_render_minimal,   "Minimal"  },
+    {&puppyprint_rigid_body,   "Rigid Bodies"  },
     {&print_audio_ram_overview,    "Audio"    },
-    {&print_ram_overview,          "Segments" },
     {&puppyprint_render_collision, "Collision"},
     {&print_console_log,           "Log"      },
 };
@@ -648,17 +666,14 @@ void puppyprint_render_profiler(void) {
 }
 
 void puppyprint_profiler_process(void) {
-    if (fDebug && (gPlayer1Controller->buttonPressed & L_TRIG)) {
+    if (fDebug && (gPlayer1Controller->buttonPressed & (U_JPAD | D_JPAD))) {
         sDebugMenu ^= TRUE;
         if (sDebugMenu == FALSE) {
             sPPDebugPage = sDebugOption;
         }
     }
 
-    if ((gPlayer1Controller->buttonPressed & (L_TRIG | U_JPAD))
-        && (gPlayer1Controller->buttonDown & L_TRIG)
-        && (gPlayer1Controller->buttonDown & U_JPAD)
-    ) {
+    if (gPlayer1Controller->buttonPressed & L_JPAD) {
         fDebug    ^= TRUE;
         sDebugMenu = FALSE;
     }

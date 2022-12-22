@@ -6,27 +6,41 @@
 
 #include "rigid_body_collision.h"
 
-#define DAMPING 0.995f
+#define DAMPING 0.999f
 
-#define SLEEP_DETECTION_BIAS 0.96f
-#define SLEEP_DETECTION_THRESHOLD 3.f
+#define SLEEP_DETECTION_BIAS 0.95f
+#define SLEEP_DETECTION_THRESHOLD 2.f
 
 #define PENETRATION_BIAS 0.1f
-#define PENETRATION_MAX_DEPTH 0.1f
+#define PENETRATION_MIN_DEPTH 0.5f
+#define PENETRATION_MAX_DEPTH 50.f
 
 #define GRAVITY_FORCE -3.f
 #define FRICTION 0.5f
 
 #define NUM_RIGID_BODY_STEPS 3
-#define NUM_IMPULSE_ITERATIONS 1
+#define NUM_IMPULSE_ITERATIONS 3
+
+#define MAX_RIGID_BODIES 20
 
 typedef Vec4f Quat;
 
+#ifdef PUPPYPRINT_DEBUG
+extern u32 pNumTrisChecked;
+extern u32 pNumCols;
+extern u32 pNumColsTrunc;
+extern u32 pNumVertexChecks;
+extern u32 pNumEdgeChecks;
+extern u32 pNumFaceChecks;
+extern u32 pNumImpulsesApplied;
+#endif
+
 // Controls an instance of a rigid body
 struct RigidBody {
-    u8 allocated; // Mark if the struct has been allocated
-    u8 isStatic; // Can the rigid body move
-    u8 asleep; // Body goes to sleep if inactive for a while, and collision is not calculated
+    u8 allocated:1; // Mark if the struct has been allocated
+    u8 isStatic:1; // Can the rigid body move
+    u8 asleep:1; // Body goes to sleep if inactive for a while, and collision is not calculated
+    u8 hasGravity:1; // Apply gravity to the body
 
     f32 mass;
     f32 invMass; // 1/m (for performance)
@@ -48,11 +62,14 @@ struct RigidBody {
     struct Object *obj; // Pointer to the object this rigid body is linked to
 };
 
+extern struct RigidBody gRigidBodies[MAX_RIGID_BODIES];
+
 void vec3f_scale(Vec3f dest, Vec3f src, f32 scale);
 void vec3f_add_scaled(Vec3f dest, Vec3f src, f32 scale);
 
 struct RigidBody *allocate_rigid_body(struct MeshInfo *mesh, f32 mass, Vec3f size, Vec3f pos, Mat4 *transform);
 void deallocate_rigid_body(struct RigidBody *body);
-void rigid_body_add_force(struct RigidBody *body, Vec3f contactPoint, Vec3f force);
+u32 rigid_bodies_near(struct RigidBody *body1, struct RigidBody *body2);
+void rigid_body_add_force(struct RigidBody *body, Vec3f contactPoint, Vec3f force, u32 wake);
 
 void do_rigid_body_step(void);

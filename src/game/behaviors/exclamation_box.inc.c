@@ -10,7 +10,7 @@ struct ExclamationBoxContents {
 
 struct ObjectHitbox sExclamationBoxHitbox = {
     /* interactType:      */ INTERACT_BREAKABLE,
-    /* downOffset:        */ 5,
+    /* downOffset:        */ 30,
     /* damageOrCoinValue: */ 0,
     /* health:            */ 1,
     /* numLootCoins:      */ 0,
@@ -166,7 +166,27 @@ ObjActionFunc sExclamationBoxActions[] = {
     exclamation_box_act_wait_for_respawn,
 };
 
+#include "game/rigid_body.h"
+
+Vec3f sExclamationBoxSize = { 52.f, 52.f, 52.f };
+
+void bhv_exclamation_box_init(void) {
+    o->oPosY += 52.f;
+    struct RigidBody *body = allocate_rigid_body(&Cube_Mesh, 2.f, sExclamationBoxSize, &o->oPosVec, &gCurrentObject->transform);
+    body->obj = o;
+    body->asleep = TRUE;
+    body->hasGravity = FALSE;
+    o->rigidBody = body;
+    exclamation_box_act_init();
+}
+
 void bhv_exclamation_box_loop(void) {
     cur_obj_scale(2.0f);
-    cur_obj_call_action_function(sExclamationBoxActions);
+    load_object_collision_model();
+    if (cur_obj_is_mario_on_platform()) {
+        Vec3f force;
+        vec3f_set(force, 0.f, 1.f * (gMarioState->vel[1] - 4.f), 0.f);
+        rigid_body_add_force(o->rigidBody, gMarioState->pos, force, TRUE);
+    }
+    //cur_obj_call_action_function(sExclamationBoxActions);
 }
