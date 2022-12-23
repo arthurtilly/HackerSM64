@@ -47,6 +47,7 @@ enum ObjectList {
                           //      command are put here, so this is treated as a default.
     OBJ_LIST_SURFACE,     //  (9) surface objects. objects that specifically have surface
                           //      collision and not object collision. (thwomp, whomp, etc)
+    OBJ_LIST_RIGID_BODY,  //      rigid bodies, must update after surface objects
     OBJ_LIST_POLELIKE,    // (10) polelike objects. objects that attract or otherwise
                           //      "cling" Mario similar to a pole action. (hoot,
                           //      whirlpool, trees/poles, etc)

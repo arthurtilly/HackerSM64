@@ -221,6 +221,10 @@ Gfx *create_shadow_below_xyz(Vec3f pos, s16 shadowScale, u8 shadowSolidity, s8 s
         if (floor == NULL) {
             return NULL;
         }
+        if (floor->object == gCurGraphNodeObject) {
+            // The object is on its own floor, so don't use the floor.
+            return NULL;
+        }
 
         // Skip shifting the shadow height later, since the find_floor call above uses the already shifted position.
         shifted = FALSE;

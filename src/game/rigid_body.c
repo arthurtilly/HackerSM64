@@ -17,6 +17,13 @@ u32 pNumVertexChecks;
 u32 pNumEdgeChecks;
 u32 pNumFaceChecks;
 u32 pNumImpulsesApplied;
+
+u32 pNumRigidBodies = 0;
+u32 pNumActiveRigidBodies = 0;
+
+void increment_debug_counter(u32 *counter, s32 amount) {
+    *counter += amount;
+}
 #endif
 
 /// Set a vector to another vector scaled by a constant.
@@ -89,9 +96,7 @@ void rigid_body_collision_impulse(struct RigidBody *body1, struct RigidBody *bod
         body1->asleep = FALSE;
         body2->asleep = FALSE;
     }
-#ifdef PUPPYPRINT_DEBUG
-    pNumImpulsesApplied++;
-#endif
+    increment_debug_counter(&pNumImpulsesApplied, 1);
 
     // Determine the relative velocity (dv) of the two bodies at the point of impact.
     Vec3f r0, r1, v0, v1, dv;
@@ -235,12 +240,21 @@ struct RigidBody *allocate_rigid_body(struct MeshInfo *mesh, f32 mass, Vec3f siz
             vec3f_set(body->netTorque, 0.0f, 0.0f, 0.0f);
 
             body->transform = transform;
+            body->obj = NULL;
             rigid_body_update_matrix(body);
-
             return body;
         }
     }
     return NULL;
+}
+
+void rigid_body_set_yaw(struct RigidBody *body, s16 yaw) {
+    s32 ang = (-yaw) >> 1;
+    body->angleQuat[0] = 0.f;
+    body->angleQuat[1] = sins(ang);
+    body->angleQuat[2] = 0.f;
+    body->angleQuat[3] = coss(ang);
+    rigid_body_update_matrix(body);
 }
 
 /// Deallocates a rigid body.
@@ -284,6 +298,15 @@ void rigid_body_add_force(struct RigidBody *body, Vec3f contactPoint, Vec3f forc
 void rigid_body_update_position(struct RigidBody *body) {
     if (body->isStatic) {
         return;
+    }
+
+        f32 motion = vec3f_dot(body->linearVel, body->linearVel) + vec3f_dot(body->angularVel, body->angularVel);
+    body->motion = SLEEP_DETECTION_BIAS * body->motion + (1 - SLEEP_DETECTION_BIAS) * motion;
+
+    if (body->motion < SLEEP_DETECTION_THRESHOLD) {
+        body->asleep = TRUE;
+        vec3f_set(body->linearVel, 0.0f, 0.0f, 0.0f);
+        vec3f_set(body->angularVel, 0.0f, 0.0f, 0.0f);
     }
 
     // Apply linear velocity
@@ -357,15 +380,6 @@ void rigid_body_update_velocity(struct RigidBody *body) {
     vec3f_scale(body->angularVel, body->angularVel, DAMPING);
 
     rigid_body_update_matrix(body);
-
-    f32 motion = vec3f_dot(body->linearVel, body->linearVel) + vec3f_dot(body->angularVel, body->angularVel);
-    body->motion = SLEEP_DETECTION_BIAS * body->motion + (1 - SLEEP_DETECTION_BIAS) * motion;
-
-    if (body->motion < SLEEP_DETECTION_THRESHOLD) {
-        body->asleep = TRUE;
-        vec3f_set(body->linearVel, 0.0f, 0.0f, 0.0f);
-        vec3f_set(body->angularVel, 0.0f, 0.0f, 0.0f);
-    }
 }
 
 /// Apply impulses to rigid bodies to resolve stored collisions.
@@ -375,7 +389,10 @@ void apply_impulses(void) {
 
         for (u32 j = 0; j < col->numPoints; j++) {
             struct CollisionPoint *colPoint = &col->points[j];
-            rigid_body_collision_impulse(col->body1, col->body2, colPoint->point, colPoint->normal, colPoint->penetration);
+            Vec3f normal;
+            vec3f_copy(normal, colPoint->normal);
+            vec3f_normalize(normal);
+            rigid_body_collision_impulse(col->body1, col->body2, colPoint->point, normal, colPoint->penetration);
         }
     }
 }
@@ -414,5 +431,52 @@ void do_rigid_body_step(void) {
         if (gRigidBodies[i].allocated) {
             rigid_body_update_position(&gRigidBodies[i]);
         }
+    }
+}
+
+void check_hit_rigid_body_floor_or_ceiling(struct Surface *surf, Vec3f pos, f32 yvel) {
+    if (surf->object != NULL) {
+        if (surf->object->rigidBody != NULL) {
+            Vec3f force;
+            vec3f_set(force, 0.f, yvel, 0.f);
+            rigid_body_add_force(surf->object->rigidBody, pos, force, TRUE);
+        }
+    }
+}
+
+void check_hit_rigid_body_wall(struct Surface *wall, Vec3f pos, f32 fvel, f32 yvel, s16 yaw) {
+    if (wall->object != NULL) {
+        if (wall->object->rigidBody != NULL) {
+            Vec3f force;
+            force[0] = fvel * sins(yaw);
+            force[1] = yvel;
+            force[2] = fvel * coss(yaw);
+            rigid_body_add_force(wall->object->rigidBody, pos, force, TRUE);
+            append_puppyprint_log("Wall force %d", (s32)fvel);
+        }
+    }
+}
+
+void rigid_body_general_object_loop(void) {
+    s16 animID = gMarioObject->header.gfx.animInfo.animID;
+
+    if (obj_check_if_collided_with_object(o, gMarioObject) && 
+        (animID == MARIO_ANIM_SIDESTEP_RIGHT || animID == MARIO_ANIM_SIDESTEP_LEFT || animID == MARIO_ANIM_PUSHING)) {
+        s16 angleToMario = obj_angle_to_object(o, gMarioObject);
+        if (abs_angle_diff(angleToMario, gMarioObject->oMoveAngleYaw) > 0x7000) {
+            Vec3f force;
+            force[0] = sins(gMarioObject->oMoveAngleYaw) * 10.f;
+            force[1] = 0.0f;
+            force[2] = coss(gMarioObject->oMoveAngleYaw) * 10.f;
+            Vec3f loc;
+            vec3f_copy(loc, &gMarioObject->oPosVec);
+            loc[1] += 100.f;
+            rigid_body_add_force(o->rigidBody, loc, force, TRUE);
+            o->rigidBody->motion = 10.f;
+        }
+    }
+
+    if (o->oPosY < -5000.f) {
+        mark_obj_for_deletion(o);
     }
 }

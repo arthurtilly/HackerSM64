@@ -1806,7 +1806,7 @@ const BehaviorScript bhvBreakableBox[] = {
 };
 
 const BehaviorScript bhvPushableMetalBox[] = {
-    BEGIN(OBJ_LIST_SURFACE),
+    BEGIN(OBJ_LIST_RIGID_BODY),
     OR_INT(oFlags, OBJ_FLAG_UPDATE_GFX_POS_AND_ANGLE),
     LOAD_COLLISION_DATA(metal_box_seg8_collision_08024C28),
     CALL_NATIVE(bhv_pushable_init),
@@ -2625,7 +2625,7 @@ const BehaviorScript bhvBub[] = {
 };
 
 const BehaviorScript bhvExclamationBox[] = {
-    BEGIN(OBJ_LIST_SURFACE),
+    BEGIN(OBJ_LIST_RIGID_BODY),
     OR_INT(oFlags, (OBJ_FLAG_SET_FACE_YAW_TO_MOVE_YAW | OBJ_FLAG_UPDATE_GFX_POS_AND_ANGLE)),
     LOAD_COLLISION_DATA(exclamation_box_outline_seg8_collision_08025F78),
     OR_INT(oFlags, OBJ_FLAG_UPDATE_GFX_POS_AND_ANGLE),
@@ -3776,17 +3776,18 @@ const BehaviorScript bhvJetStream[] = {
 };
 
 const BehaviorScript bhvMessagePanel[] = {
-    BEGIN(OBJ_LIST_SURFACE),
+    BEGIN(OBJ_LIST_RIGID_BODY),
     OR_INT(oFlags, (OBJ_FLAG_UPDATE_GFX_POS_AND_ANGLE)),
     LOAD_COLLISION_DATA(wooden_signpost_seg3_collision_0302DD80),
     SET_FLOAT(oCollisionDistance, 150),
     SET_INTERACT_TYPE(INTERACT_TEXT),
     SET_INT(oInteractionSubtype, INT_SUBTYPE_SIGN),
     DROP_TO_FLOOR(),
-    SET_HITBOX(/*Radius*/ 150, /*Height*/ 80),
-    SET_INT(oWoodenPostTotalMarioAngle, 0),
+    SET_HITBOX_WITH_OFFSET(/*Radius*/ 150, /*Height*/ 80, /*Downwards offset*/ 63),
+    CALL_NATIVE(bhv_message_panel_init),
     BEGIN_LOOP(),
         SET_INT(oIntangibleTimer, 0),
+        CALL_NATIVE(bhv_message_panel_loop),
         CALL_NATIVE(load_object_collision_model),
         SET_INT(oInteractStatus, INT_STATUS_NONE),
     END_LOOP(),

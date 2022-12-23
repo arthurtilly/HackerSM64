@@ -9,6 +9,7 @@
 #include "game_init.h"
 #include "interaction.h"
 #include "mario_step.h"
+#include "rigid_body.h"
 
 #include "config.h"
 
@@ -262,6 +263,7 @@ s32 stationary_ground_step(struct MarioState *m) {
         //! TODO - This is responsible for many stationary downwarps but is
         // important for stuff like catching Bowser in midair, figure out a good way to fix
         m->pos[1] = m->floorHeight;
+        check_hit_rigid_body_floor_or_ceiling(m->floor, m->pos, -2.f);
 
         vec3f_copy(marioObj->header.gfx.pos, m->pos);
         vec3s_set(marioObj->header.gfx.angle, 0, m->faceAngle[1], 0);
@@ -358,6 +360,7 @@ s32 perform_ground_step(struct MarioState *m) {
         if (stepResult == GROUND_STEP_LEFT_GROUND || stepResult == GROUND_STEP_HIT_WALL_STOP_QSTEPS) {
             break;
         }
+        check_hit_rigid_body_floor_or_ceiling(m->floor, m->pos, -2.f);
     }
 
     m->terrainSoundAddend = mario_get_terrain_sound_addend(m);
@@ -441,6 +444,10 @@ s32 bonk_or_hit_lava_wall(struct MarioState *m, struct WallCollisionData *wallDa
                 set_mario_wall(m, wallData->walls[i]);
 
                 if (wallDYaw > DEGREES(180 - WALL_KICK_DEGREES)) {
+                    Vec3f pos;
+                    vec3f_copy(pos, m->pos);
+                    pos[1] += 100.0f;
+                    check_hit_rigid_body_wall(wallData->walls[i], pos, m->forwardVel, 0.f, m->faceAngle[1]);
                     m->flags |= MARIO_AIR_HIT_WALL;
                     result = AIR_STEP_HIT_WALL;
                 }
@@ -501,11 +508,16 @@ s32 perform_air_quarter_step(struct MarioState *m, Vec3f intendedPos, u32 stepAr
         // Mario landed, but his movement is cancelled and his referenced floor
         // isn't updated (pedro spots)
         m->pos[1] = floorHeight;
+        check_hit_rigid_body_floor_or_ceiling(floor, m->pos, m->vel[1]);
         return AIR_STEP_LANDED;
     }
 
     if (nextPos[1] + 160.0f > ceilHeight) {
         if (m->vel[1] >= 0.0f) {
+            Vec3f hitPos;
+            vec3f_copy(hitPos, m->pos);
+            hitPos[1] += 160.0f;
+            check_hit_rigid_body_floor_or_ceiling(ceil, hitPos, m->vel[1]);
             m->vel[1] = 0.0f;
 
 #ifdef HANGING_FIX
@@ -523,6 +535,7 @@ s32 perform_air_quarter_step(struct MarioState *m, Vec3f intendedPos, u32 stepAr
         //! Potential subframe downwarp->upwarp?
         if (nextPos[1] <= m->floorHeight) {
             m->pos[1] = m->floorHeight;
+            check_hit_rigid_body_floor_or_ceiling(floor, m->pos, m->vel[1]);
             return AIR_STEP_LANDED;
         }
 

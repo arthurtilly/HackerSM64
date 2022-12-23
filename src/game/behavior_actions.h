@@ -281,6 +281,8 @@ void bhv_cannon_closed_loop(void);
 void bhv_whirlpool_init(void);
 void bhv_whirlpool_loop(void);
 void bhv_jet_stream_loop(void);
+void bhv_message_panel_init(void);
+void bhv_message_panel_loop(void);
 void bhv_homing_amp_init(void);
 void bhv_homing_amp_loop(void);
 void bhv_circling_amp_init(void);

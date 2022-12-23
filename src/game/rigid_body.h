@@ -18,10 +18,10 @@
 #define GRAVITY_FORCE -3.f
 #define FRICTION 0.5f
 
-#define NUM_RIGID_BODY_STEPS 3
+#define NUM_RIGID_BODY_STEPS 2
 #define NUM_IMPULSE_ITERATIONS 3
 
-#define MAX_RIGID_BODIES 20
+#define MAX_RIGID_BODIES 40
 
 typedef Vec4f Quat;
 
@@ -33,7 +33,17 @@ extern u32 pNumVertexChecks;
 extern u32 pNumEdgeChecks;
 extern u32 pNumFaceChecks;
 extern u32 pNumImpulsesApplied;
+
+extern u32 pNumRigidBodies;
+extern u32 pNumActiveRigidBodies;
+
+void increment_debug_counter(u32 *counter, s32 amount);
+#else
+
+#define increment_debug_counter(_, _)
+
 #endif
+
 
 // Controls an instance of a rigid body
 struct RigidBody {
@@ -69,7 +79,11 @@ void vec3f_add_scaled(Vec3f dest, Vec3f src, f32 scale);
 
 struct RigidBody *allocate_rigid_body(struct MeshInfo *mesh, f32 mass, Vec3f size, Vec3f pos, Mat4 *transform);
 void deallocate_rigid_body(struct RigidBody *body);
+void rigid_body_set_yaw(struct RigidBody *body, s16 yaw);
 u32 rigid_bodies_near(struct RigidBody *body1, struct RigidBody *body2);
+void check_hit_rigid_body_floor_or_ceiling(struct Surface *surf, Vec3f pos, f32 yvel);
+void check_hit_rigid_body_wall(struct Surface *wall, Vec3f pos, f32 fvel, f32 yvel, s16 yaw);
 void rigid_body_add_force(struct RigidBody *body, Vec3f contactPoint, Vec3f force, u32 wake);
 
 void do_rigid_body_step(void);
+void rigid_body_general_object_loop(void);

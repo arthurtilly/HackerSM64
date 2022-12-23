@@ -128,6 +128,9 @@ void check_player_object_collision(void) {
                       (struct Object *)  gObjectLists[OBJ_LIST_SURFACE].next,
                       (struct Object *) &gObjectLists[OBJ_LIST_SURFACE]);
         check_collision_in_list(nextObj,
+                      (struct Object *)  gObjectLists[OBJ_LIST_RIGID_BODY].next,
+                      (struct Object *) &gObjectLists[OBJ_LIST_RIGID_BODY]);
+        check_collision_in_list(nextObj,
                       (struct Object *)  gObjectLists[OBJ_LIST_DESTRUCTIVE].next,
                       (struct Object *) &gObjectLists[OBJ_LIST_DESTRUCTIVE]);
         nextObj = (struct Object *) nextObj->header.next;
@@ -169,6 +172,7 @@ void detect_object_collisions(void) {
     clear_object_collision((struct Object *) &gObjectLists[OBJ_LIST_GENACTOR]);
     clear_object_collision((struct Object *) &gObjectLists[OBJ_LIST_LEVEL]);
     clear_object_collision((struct Object *) &gObjectLists[OBJ_LIST_SURFACE]);
+    clear_object_collision((struct Object *) &gObjectLists[OBJ_LIST_RIGID_BODY]);
     clear_object_collision((struct Object *) &gObjectLists[OBJ_LIST_DESTRUCTIVE]);
     check_player_object_collision();
     check_destructive_object_collision();

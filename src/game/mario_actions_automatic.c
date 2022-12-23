@@ -547,6 +547,7 @@ void update_ledge_climb_camera(struct MarioState *m) {
 
 void update_ledge_climb(struct MarioState *m, s32 animation, u32 endAction) {
     stop_and_set_height_to_floor(m);
+    check_hit_rigid_body_floor_or_ceiling(m->floor, m->pos, -2.f);
 
     set_mario_animation(m, animation);
     if (is_anim_at_end(m)) {
@@ -582,6 +583,8 @@ s32 act_ledge_grab(struct MarioState *m) {
         }
         return let_go_of_ledge(m);
     }
+
+    check_hit_rigid_body_floor_or_ceiling(m->floor, m->pos, -2.f);
 #ifdef VERSION_EU
     // On EU, you can't slow climb up ledges while holding A.
     if (m->actionTimer == 10 && (m->input & INPUT_NONZERO_ANALOG) && !(m->input & INPUT_A_DOWN))

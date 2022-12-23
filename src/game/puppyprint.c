@@ -593,20 +593,35 @@ void puppyprint_render_standard(void) {
 
 void puppyprint_rigid_body(void) {
     char textBytes[90];
+    f32 yPos = 4;
+
+    pNumRigidBodies = 0;
+    pNumActiveRigidBodies = 0;
+    for (u32 i = 0; i < MAX_RIGID_BODIES; i++) {
+        if (gRigidBodies[i].allocated) {
+            pNumRigidBodies++;
+            if (!gRigidBodies[i].asleep) {
+                pNumActiveRigidBodies++;
+            }
+        }
+    }
+
+    sprintf(textBytes, "Rigid Bodies: %d/%d/%d", pNumActiveRigidBodies, pNumRigidBodies, MAX_RIGID_BODIES);
+    print_small_text(16, yPos += 12, textBytes, PRINT_TEXT_ALIGN_LEFT, PRINT_ALL, FONT_OUTLINE);
     sprintf(textBytes, "Contact Points: %d/%d", pNumColsTrunc, pNumCols);
-    print_small_text(16, 16, textBytes, PRINT_TEXT_ALIGN_LEFT, PRINT_ALL, FONT_OUTLINE);
+    print_small_text(16, yPos += 12, textBytes, PRINT_TEXT_ALIGN_LEFT, PRINT_ALL, FONT_OUTLINE);
 
     sprintf(textBytes, "Tris Checked: %d", pNumTrisChecked);
-    print_small_text(16, 40, textBytes, PRINT_TEXT_ALIGN_LEFT, PRINT_ALL, FONT_OUTLINE);
+    print_small_text(16, yPos += 24, textBytes, PRINT_TEXT_ALIGN_LEFT, PRINT_ALL, FONT_OUTLINE);
     sprintf(textBytes, "Vertices: %d", pNumVertexChecks);
-    print_small_text(28, 52, textBytes, PRINT_TEXT_ALIGN_LEFT, PRINT_ALL, FONT_OUTLINE);
+    print_small_text(28, yPos += 12, textBytes, PRINT_TEXT_ALIGN_LEFT, PRINT_ALL, FONT_OUTLINE);
     sprintf(textBytes, "Edges: %d", pNumEdgeChecks);
-    print_small_text(28, 64, textBytes, PRINT_TEXT_ALIGN_LEFT, PRINT_ALL, FONT_OUTLINE);
+    print_small_text(28, yPos += 12, textBytes, PRINT_TEXT_ALIGN_LEFT, PRINT_ALL, FONT_OUTLINE);
     sprintf(textBytes, "Faces: %d", pNumFaceChecks);
-    print_small_text(28, 76, textBytes, PRINT_TEXT_ALIGN_LEFT, PRINT_ALL, FONT_OUTLINE);
+    print_small_text(28, yPos += 12, textBytes, PRINT_TEXT_ALIGN_LEFT, PRINT_ALL, FONT_OUTLINE);
 
     sprintf(textBytes, "Impulses: %d", pNumImpulsesApplied);
-    print_small_text(16, 100, textBytes, PRINT_TEXT_ALIGN_LEFT, PRINT_ALL, FONT_OUTLINE);
+    print_small_text(16, yPos += 24, textBytes, PRINT_TEXT_ALIGN_LEFT, PRINT_ALL, FONT_OUTLINE);
 }
 
 

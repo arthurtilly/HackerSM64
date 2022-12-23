@@ -169,6 +169,7 @@ struct ObjectNode gObjectListArray[16];
  */
 s8 sObjectListUpdateOrder[] = { OBJ_LIST_SPAWNER,
                                 OBJ_LIST_SURFACE,
+                                OBJ_LIST_RIGID_BODY,
                                 OBJ_LIST_POLELIKE,
                                 OBJ_LIST_PLAYER,
                                 OBJ_LIST_PUSHABLE,
@@ -447,10 +448,6 @@ void unload_objects_from_area(UNUSED s32 unused, s32 areaIndex) {
             }
         }
     }
-
-    for (i = 0; i < MAX_RIGID_BODIES; i++) {
-        gRigidBodies[i].allocated = FALSE;
-    }
 }
 
 /**
@@ -557,6 +554,8 @@ void update_terrain_objects(void) {
 
     gObjectCounter += update_objects_in_list(&gObjectLists[OBJ_LIST_SURFACE]);
     profiler_update(PROFILER_TIME_DYNAMIC);
+
+    gObjectCounter += update_objects_in_list(&gObjectLists[OBJ_LIST_RIGID_BODY]);
 }
 
 /**

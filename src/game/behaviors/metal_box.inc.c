@@ -29,33 +29,38 @@ Vec3f sPushableBoxSize = { 154.f, 154.f, 154.f };
 f32 find_floor_height(f32 x, f32 y, f32 z);
 
 void bhv_pushable_init(void) {
-    o->oPosY += 154.f;
-    struct RigidBody *body = allocate_rigid_body(&Cube_Mesh, 5.f, sPushableBoxSize, &o->oPosVec, &gCurrentObject->transform);
-    body->obj = o;
+    u32 sleep = FALSE;
     f32 floorHeight = find_floor_height(o->oPosX, o->oPosY, o->oPosZ);
-    if (o->oPosY - floorHeight < 5.f) body->asleep = TRUE;
+    if (ABS(o->oPosY - floorHeight) < 5.f) sleep = TRUE;
+    o->oPosY += 154.f;
+    struct RigidBody *body = allocate_rigid_body(&Cube_Mesh, 6.f, sPushableBoxSize, &o->oPosVec, &o->transform);
+    rigid_body_set_yaw(body, o->oFaceAngleYaw);
+    body->obj = o;
+    body->asleep = sleep;
     o->rigidBody = body;
 }
 
 void bhv_pushable_loop(void) {
     obj_set_hitbox(o, &sMetalBoxHitbox);
+    rigid_body_general_object_loop();
+}
 
-    s16 animID = gMarioObject->header.gfx.animInfo.animID;
+Vec3f sSignpostSize = { 45.f, 63.f, 16.f };
 
-    if (obj_check_if_collided_with_object(o, gMarioObject) && 
-        (animID == MARIO_ANIM_SIDESTEP_RIGHT || animID == MARIO_ANIM_SIDESTEP_LEFT || animID == MARIO_ANIM_PUSHING)) {
-        s16 angleToMario = obj_angle_to_object(o, gMarioObject);
-        if (abs_angle_diff(angleToMario, gMarioObject->oMoveAngleYaw) > 0x7000) {
-            Vec3f force;
-            force[0] = sins(gMarioObject->oMoveAngleYaw) * 30.f;
-            force[1] = 0.0f;
-            force[2] = coss(gMarioObject->oMoveAngleYaw) * 30.f;
-            rigid_body_add_force(o->rigidBody, &gMarioObject->oPosVec, force, TRUE);
-            o->rigidBody->motion = 10.f;
-        }
-    }
+void bhv_message_panel_init(void) {
+    u32 sleep = FALSE;
+    f32 floorHeight = find_floor_height(o->oPosX, o->oPosY, o->oPosZ);
+    if (ABS(o->oPosY - floorHeight) < 5.f) sleep = TRUE;
+    o->oPosY += 63.f;
+    struct RigidBody *body = allocate_rigid_body(&Cube_Mesh, 1.f, sSignpostSize, &o->oPosVec, &o->transform);
+    rigid_body_set_yaw(body, o->oFaceAngleYaw);
+    
+    body->obj = o;
+    body->asleep = sleep;
+    o->rigidBody = body;
+}
 
-    if (o->oPosY < -5000.f) {
-        mark_obj_for_deletion(o);
-    }
+void bhv_message_panel_loop(void) {
+    rigid_body_general_object_loop();
+    
 }

@@ -865,6 +865,8 @@ void geo_set_animation_globals(struct AnimInfo *node, s32 hasAnimation) {
     }
 }
 
+#include "game/rigid_body.h"
+
 /**
  * Process a shadow node. Renders a shadow under an object offset by the
  * translation of the first animated component and rotated according to
@@ -911,6 +913,10 @@ void geo_process_shadow(struct GraphNodeShadow *node) {
 
             shadowPos[0] += animOffset[0] * cosAng + animOffset[2] * sinAng;
             shadowPos[2] += -animOffset[0] * sinAng + animOffset[2] * cosAng;
+        }
+
+        if (((struct Object *)gCurGraphNodeObject)->rigidBody != NULL) {
+            shadowPos[1] -= ((struct Object *)gCurGraphNodeObject)->rigidBody->size[1];
         }
 
         Gfx *shadowList = create_shadow_below_xyz(shadowPos, shadowScale * 0.5f,

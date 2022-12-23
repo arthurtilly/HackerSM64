@@ -96,23 +96,24 @@ struct Collision *init_collision(struct RigidBody *body1, struct RigidBody *body
 
 /// Adds a contact point to the given collision struct.
 void add_collision(struct Collision *collision, Vec3f point, Vec3f normal, f32 penetration) {
-#ifdef PUPPYPRINT_DEBUG
-    pNumCols++;
-#endif
+    increment_debug_counter(&pNumCols, 1);
     // Check if there is a nearby point already in the collision.
     for (s32 i = 0; i < collision->numPoints; i++) {
         Vec3f dist;
         vec3f_sub2(dist, point, collision->points[i].point);
         if (vec3f_dot(dist, dist) < 0.1f) {
+            vec3f_scale(dist, normal, 50.f - penetration);
+            vec3f_add(collision->points[i].normal, dist);
+            if (penetration < collision->points[i].penetration) {
+                collision->points[i].penetration = penetration;
+            }
             return;
         }
     }
-#ifdef PUPPYPRINT_DEBUG
-    pNumColsTrunc++;
-#endif
+    increment_debug_counter(&pNumColsTrunc, 1);
     struct CollisionPoint *colPoint = &collision->points[collision->numPoints];
     vec3f_copy(colPoint->point, point);
-    vec3f_copy(colPoint->normal, normal);
+    vec3f_scale(colPoint->normal, normal, 50.f - penetration);
     colPoint->penetration = penetration;
     collision->numPoints++;
 }
@@ -203,10 +204,8 @@ s32 edge_intersects_plane(Vec3f intersectionPoint, Vec3f edgePoint1, Vec3f edgeP
 
 /// Check if a mesh's vertices are intersecting a triangle's face.
 void vertices_vs_tri_face(Vec3f vertices[], u32 numVertices, struct TriangleInfo *tri, struct Collision *col) {
+    increment_debug_counter(&pNumVertexChecks, numVertices);
     for (u32 i = 0; i < numVertices; i++) {
-#ifdef PUPPYPRINT_DEBUG
-        pNumVertexChecks++;
-#endif
         f32 distance = point_in_plane(vertices[i], tri->vertices[0], tri->normal);
         if (distance <= PENETRATION_MIN_DEPTH || distance >= PENETRATION_MAX_DEPTH) continue;
         if (point_is_in_tri(vertices[i], tri)) {
@@ -217,10 +216,8 @@ void vertices_vs_tri_face(Vec3f vertices[], u32 numVertices, struct TriangleInfo
 
 /// Check if a mesh's vertices are intersecting a quad's face.
 void vertices_vs_quad_face(Vec3f vertices[], u32 numVertices, struct QuadInfo *quad, struct Collision *col) {
+    increment_debug_counter(&pNumVertexChecks, numVertices);
     for (u32 i = 0; i < numVertices; i++) {
-#ifdef PUPPYPRINT_DEBUG
-        pNumVertexChecks++;
-#endif
         f32 distance = point_in_plane(vertices[i], quad->vertices[0], quad->normal);
         if (distance <= PENETRATION_MIN_DEPTH || distance >= PENETRATION_MAX_DEPTH) continue;
         if (point_is_in_quad(vertices[i], quad)) {
@@ -236,10 +233,8 @@ void edges_vs_edge(Vec3f vertices[], MeshEdge edges[], u32 numEdges, Vec3f edgeP
     vec3f_sub2(edge, edgePoint2, edgePoint1);
     vec3f_cross(planeNormal, edgeNormal, edge);
     vec3f_normalize(planeNormal);
+    increment_debug_counter(&pNumEdgeChecks, numEdges);
     for (u32 i = 0; i < numEdges; i++) {
-#ifdef PUPPYPRINT_DEBUG
-        pNumEdgeChecks++;
-#endif
         if (edge_intersects_plane(intersectionPoint, vertices[edges[i][0]], vertices[edges[i][1]], edgePoint1, planeNormal)) {
             // Find distance from intersection point to edge
             vec3f_sub2(temp, edgePoint1, intersectionPoint);
@@ -261,10 +256,8 @@ void edges_vs_edge(Vec3f vertices[], MeshEdge edges[], u32 numEdges, Vec3f edgeP
 }
 
 void tris_vs_vertex(struct TriangleInfo tris[], u32 numTris, Vec3f point, Vec3f vertexNormal, struct Collision *col) {
+    increment_debug_counter(&pNumFaceChecks, numTris);
     for (u32 i = 0; i < numTris; i++) {
-#ifdef PUPPYPRINT_DEBUG
-        pNumFaceChecks++;
-#endif
         Vec3f edge1;
         vec3f_sub2(edge1, point, tris[i].vertices[0]);
         f32 distance = vec3f_dot(tris[i].normal, vertexNormal);
@@ -282,10 +275,8 @@ void tris_vs_vertex(struct TriangleInfo tris[], u32 numTris, Vec3f point, Vec3f 
 }
 
 void quads_vs_vertex(struct QuadInfo quads[], u32 numQuads, Vec3f point, Vec3f vertexNormal, struct Collision *col) {
+    increment_debug_counter(&pNumFaceChecks, numQuads);
     for (u32 i = 0; i < numQuads; i++) {
-#ifdef PUPPYPRINT_DEBUG
-        pNumFaceChecks++;
-#endif
         Vec3f edge1;
         vec3f_sub2(edge1, point, quads[i].vertices[0]);
         f32 distance = vec3f_dot(quads[i].normal, vertexNormal);
@@ -379,9 +370,7 @@ void body_vs_surface_collision(struct RigidBody *body, struct Surface *tri, stru
     vec3s_to_vec3f(triInfo.vertices[2], tri->vertex3);
     vec3f_copy(triInfo.normal, &tri->normal.x);
     if (!is_body_near_tri(body, &triInfo)) return;
-#ifdef PUPPYPRINT_DEBUG
-    pNumTrisChecked++;
-#endif
+    increment_debug_counter(&pNumTrisChecked, 1);
     struct MeshInfo *mesh = body->mesh;
 
     u32 prevCollisions = col->numPoints;
@@ -424,11 +413,17 @@ void rigid_body_check_surf_collisions(struct RigidBody *body) {
     // Iterate over all triangles
     for (s32 cellZ = minCellZ; cellZ <= maxCellZ; cellZ++) {
         for (s32 cellX = minCellX; cellX <= maxCellX; cellX++) {
-            struct SurfaceNode *cell = gStaticSurfacePartition[cellZ][cellX];
             for (u32 i = 0; i < 3; i++) {
-                struct SurfaceNode *node = cell[i].next;
+                struct SurfaceNode *node = gStaticSurfacePartition[cellZ][cellX][i].next;
                 while (node != NULL) {
                     body_vs_surface_collision(body, node->surface, col);
+                    node = node->next;
+                }
+                node = gDynamicSurfacePartition[cellZ][cellX][i].next;
+                while (node != NULL) {
+                    if (node->surface->object->rigidBody == NULL) {
+                        body_vs_surface_collision(body, node->surface, col);
+                    }
                     node = node->next;
                 }
             }

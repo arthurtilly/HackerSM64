@@ -1781,6 +1781,8 @@ u32 interact_text(struct MarioState *m, UNUSED u32 interactType, struct Object *
     return interact;
 }
 
+#include "rigid_body.h"
+
 void check_kick_or_punch_wall(struct MarioState *m) {
     if (m->flags & (MARIO_PUNCHING | MARIO_KICKING | MARIO_TRIPPING)) {
         struct WallCollisionData detector;
@@ -1791,6 +1793,11 @@ void check_kick_or_punch_wall(struct MarioState *m) {
         detector.radius = 5.0f;
 
         if (find_wall_collisions(&detector) > 0) {
+            Vec3f pos;
+            vec3f_copy(pos, m->pos);
+            pos[1] += (m->flags & MARIO_PUNCHING) ? 100.0f : 20.f;
+            f32 yvel = (m->flags & MARIO_PUNCHING) ?  0.0f : 50.f;
+            check_hit_rigid_body_wall(detector.walls[0], pos, 80.f, yvel, m->faceAngle[1]);
             if (m->action != ACT_MOVE_PUNCHING || m->forwardVel >= 0.0f) {
                 if (m->action == ACT_PUNCHING) {
                     m->action = ACT_MOVE_PUNCHING;
