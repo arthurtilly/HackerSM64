@@ -50,3 +50,5 @@ extern u32 gNumCollisions;
 extern struct MeshInfo Cube_Mesh;
 
 void rigid_body_do_collision(u32 bodyIndex);
+
+void render_collision_points(void);

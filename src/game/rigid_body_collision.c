@@ -4,6 +4,7 @@
 #include "sm64.h"
 #include "rigid_body.h"
 #include "engine/surface_load.h"
+#include "game_init.h"
 
 struct Collision gCollisions[20];
 u32 gNumCollisions = 0;
@@ -54,34 +55,8 @@ struct MeshInfo Cube_Mesh = {
     6 // Number of quads
 };
 
-struct RigidBody gRigidBodyFloor = {
-    TRUE,
-    TRUE,
-    FALSE,
-    FALSE,
-
-    0.f,
-    0.f,
-    0.f,
-    0.f,
-    {0.f, 0.f, 0.f},
-    {0.f, 0.f, 0.f},
-    {0.f, 0.f, 0.f, 1.f},
-
-    {0.f, 0.f, 0.f},
-    {0.f, 0.f, 0.f},
-    {0.f, 0.f, 0.f},
-    {0.f, 0.f, 0.f},
-
-    NULL,
-    {0.f, 0.f, 0.f, 0.f,
-     0.f, 0.f, 0.f, 0.f,
-     0.f, 0.f, 0.f, 0.f,
-     0.f, 0.f, 0.f, 0.f},
-
-    NULL,
-    NULL
-};
+struct RigidBody gRigidBodyFloor;
+u8 sReverseContactPoint = FALSE;
 
 /// Initializes a collision struct. 
 struct Collision *init_collision(struct RigidBody *body1, struct RigidBody *body2) {
@@ -97,23 +72,25 @@ struct Collision *init_collision(struct RigidBody *body1, struct RigidBody *body
 /// Adds a contact point to the given collision struct.
 void add_collision(struct Collision *collision, Vec3f point, Vec3f normal, f32 penetration) {
     increment_debug_counter(&pNumCols, 1);
+    f32 normalMultiplier = (sReverseContactPoint ? -1.f : 1.f);
     // Check if there is a nearby point already in the collision.
     for (s32 i = 0; i < collision->numPoints; i++) {
         Vec3f dist;
         vec3f_sub2(dist, point, collision->points[i].point);
         if (vec3f_dot(dist, dist) < 0.1f) {
-            vec3f_scale(dist, normal, 50.f - penetration);
-            vec3f_add(collision->points[i].normal, dist);
-            if (penetration < collision->points[i].penetration) {
-                collision->points[i].penetration = penetration;
+            vec3f_scale(dist, normal, normalMultiplier);
+            if (vec3f_dot(dist, collision->points[i].normal) > 0.9f) {
+                if (penetration < collision->points[i].penetration) {
+                    collision->points[i].penetration = penetration;
+                }
+                return;
             }
-            return;
         }
     }
     increment_debug_counter(&pNumColsTrunc, 1);
     struct CollisionPoint *colPoint = &collision->points[collision->numPoints];
     vec3f_copy(colPoint->point, point);
-    vec3f_scale(colPoint->normal, normal, 50.f - penetration);
+    vec3f_scale(colPoint->normal, normal, normalMultiplier);
     colPoint->penetration = penetration;
     collision->numPoints++;
 }
@@ -306,11 +283,17 @@ static struct QuadInfo sCurrentQuads2[50];
 /// Transform all the vertices of the current rigid body.
 void calculate_mesh(struct RigidBody *body, Vec3f vertices[], struct TriangleInfo tris[], struct QuadInfo quads[]) {
     // Calculate vertices
+    vec3f_set(body->minCorner,  1000000.f,  1000000.f,  1000000.f);
+    vec3f_set(body->maxCorner, -1000000.f, -1000000.f, -1000000.f);
     for (u32 i = 0; i < body->mesh->numVertices; i++) {
         Vec3f vertex;
         vec3f_copy(vertex, body->mesh->vertices[i]);
         vec3f_mul(vertex, body->size);
         linear_mtxf_mul_vec3f_and_translate(*body->transform, vertices[i], vertex);
+        for (u32 j = 0; j < 3; j++) {
+            if (vertices[i][j] < body->minCorner[j]) body->minCorner[j] = vertices[i][j];
+            if (vertices[i][j] > body->maxCorner[j]) body->maxCorner[j] = vertices[i][j];
+        }
     }
     Vec3f edge1, edge2;
     // Calculate tris
@@ -340,12 +323,6 @@ void calculate_mesh(struct RigidBody *body, Vec3f vertices[], struct TriangleInf
 
 /// Determine if a rigid body is near a triangle.
 s32 is_body_near_tri(struct RigidBody *body, struct TriangleInfo *tri) {
-    f32 distance = -point_in_plane(body->centerOfMass, tri->vertices[0], tri->normal);
-    if (distance > body->diagonal || distance < 0.f) return FALSE;
-    Vec3f closestPoint;
-    vec3f_scale(closestPoint, tri->normal, -distance);
-    vec3f_add(closestPoint, body->centerOfMass);
-    
     s32 maxTriX = MAX(tri->vertices[0][0], MAX(tri->vertices[1][0], tri->vertices[2][0]));
     s32 minTriX = MIN(tri->vertices[0][0], MIN(tri->vertices[1][0], tri->vertices[2][0]));
     s32 maxTriY = MAX(tri->vertices[0][1], MAX(tri->vertices[1][1], tri->vertices[2][1]));
@@ -353,12 +330,12 @@ s32 is_body_near_tri(struct RigidBody *body, struct TriangleInfo *tri) {
     s32 maxTriZ = MAX(tri->vertices[0][2], MAX(tri->vertices[1][2], tri->vertices[2][2]));
     s32 minTriZ = MIN(tri->vertices[0][2], MIN(tri->vertices[1][2], tri->vertices[2][2]));
 
-    if (body->centerOfMass[0] - body->diagonal > maxTriX) return FALSE;
-    if (body->centerOfMass[0] + body->diagonal < minTriX) return FALSE;
-    if (body->centerOfMass[1] - body->diagonal > maxTriY) return FALSE;
-    if (body->centerOfMass[1] + body->diagonal < minTriY) return FALSE;
-    if (body->centerOfMass[2] - body->diagonal > maxTriZ) return FALSE;
-    if (body->centerOfMass[2] + body->diagonal < minTriZ) return FALSE;
+    if (body->minCorner[0] > maxTriX) return FALSE;
+    if (body->maxCorner[0] < minTriX) return FALSE;
+    if (body->minCorner[1] > maxTriY) return FALSE;
+    if (body->maxCorner[1] < minTriY) return FALSE;
+    if (body->minCorner[2] > maxTriZ) return FALSE;
+    if (body->maxCorner[2] < minTriZ) return FALSE;
     return TRUE;
 }
 
@@ -406,10 +383,10 @@ void rigid_body_check_surf_collisions(struct RigidBody *body) {
     }
 
     struct Collision *col = init_collision(body, &gRigidBodyFloor);
-    s32 minCellX = GET_CELL_COORD(body->centerOfMass[0] - body->diagonal);
-    s32 minCellZ = GET_CELL_COORD(body->centerOfMass[2] - body->diagonal);
-    s32 maxCellX = GET_CELL_COORD(body->centerOfMass[0] + body->diagonal);
-    s32 maxCellZ = GET_CELL_COORD(body->centerOfMass[2] + body->diagonal);
+    s32 minCellX = GET_CELL_COORD(body->minCorner[0]);
+    s32 minCellZ = GET_CELL_COORD(body->minCorner[2]);
+    s32 maxCellX = GET_CELL_COORD(body->maxCorner[0]);
+    s32 maxCellZ = GET_CELL_COORD(body->maxCorner[2]);
     // Iterate over all triangles
     for (s32 cellZ = minCellZ; cellZ <= maxCellZ; cellZ++) {
         for (s32 cellX = minCellX; cellX <= maxCellX; cellX++) {
@@ -439,13 +416,12 @@ void rigid_body_check_body_collisions(struct RigidBody *body1, struct RigidBody 
         return;
     }
 
+    calculate_mesh(body2, sCurrentVertices2, sCurrentTris2, sCurrentQuads2);
     if (!rigid_bodies_near(body1, body2)) {
         return;
     }
-
     struct Collision *col = init_collision(body1, body2);
-    calculate_mesh(body2, sCurrentVertices2, sCurrentTris2, sCurrentQuads2);
-    
+
     // Body 1 verts vs body 2 tris
     if (body2->mesh->numTris > 0) {
         for (u32 i = 0; i < body2->mesh->numTris; i++) {
@@ -475,11 +451,10 @@ void rigid_body_check_body_collisions(struct RigidBody *body1, struct RigidBody 
             normal, col);
     }
 
-    u32 prevCollisions = col->numPoints;
-
+    sReverseContactPoint = TRUE;
     // Body 1 tris vs body 2 verts
     if (body1->mesh->numTris > 0) {
-        for (u32 i = 0; i < body2->mesh->numTris; i++) {
+        for (u32 i = 0; i < body1->mesh->numTris; i++) {
             // Check for collisions
             vertices_vs_tri_face(sCurrentVertices2, body2->mesh->numVertices, &sCurrentTris[i], col);
         }
@@ -487,17 +462,12 @@ void rigid_body_check_body_collisions(struct RigidBody *body1, struct RigidBody 
 
     // Body 1 quads vs body 2 verts
     if (body1->mesh->numQuads > 0) {
-        for (u32 i = 0; i < body2->mesh->numQuads; i++) {
+        for (u32 i = 0; i < body1->mesh->numQuads; i++) {
             // Check for collisions
             vertices_vs_quad_face(sCurrentVertices2, body2->mesh->numVertices, &sCurrentQuads[i], col);
         }
     }
-
-    // Reverse penetration and normal direction of the past collisions
-    for (u32 i = prevCollisions; i < col->numPoints; i++) {
-        vec3f_scale(col->points[i].normal, col->points[i].normal, -1.0f);
-        col->points[i].penetration = -col->points[i].penetration;
-    }
+    sReverseContactPoint = FALSE;
 }
 
 void rigid_body_do_collision(u32 bodyIndex) {
@@ -512,4 +482,56 @@ void rigid_body_do_collision(u32 bodyIndex) {
             rigid_body_check_body_collisions(body, &gRigidBodies[j]);
         }
     }
+}
+
+static const Vtx vertex_collision_point[] = {
+    {{{  -40,   0, 0}, 0, {     0,      0}, {0xff, 0xff, 0xff, 0xff}}},
+    {{{   40,   0, 0}, 0, {     0,      0}, {0xff, 0xff, 0xff, 0xff}}},
+    {{{    0, 150, 0}, 0, {     0,      0}, {0xff, 0xff, 0xff, 0xff}}},
+
+    {{{       0,      0,    -40}, 0, {     0,      0}, {0xff, 0xff, 0xff, 0xff}}},
+    {{{       0,      0,     40}, 0, {     0,      0}, {0xff, 0xff, 0xff, 0xff}}},
+    {{{       0,     150,     0}, 0, {     0,      0}, {0xff, 0xff, 0xff, 0xff}}},
+};
+
+static const Gfx dl_draw_collision_point_start[] = {
+    gsSPClearGeometryMode(G_LIGHTING | G_CULL_BACK),
+    gsDPSetEnvColor(255,0,0,255),
+    gsDPSetCombineMode(G_CC_FADE, G_CC_FADE),
+    gsDPSetRenderMode(G_RM_XLU_SURF, G_RM_XLU_SURF2),
+    gsSPEndDisplayList(),
+};
+
+static const Gfx dl_draw_collision_point[] = {
+    gsSPVertex(vertex_collision_point, 6, 0),
+    gsSP1Triangle( 0,  1,  2, 0x0),
+    gsSP1Triangle( 3,  4,  5, 0x0),
+    gsSPEndDisplayList(),
+};
+
+static const Gfx dl_draw_collision_point_end[] = {
+    gsSPSetGeometryMode(G_LIGHTING | G_CULL_BACK),
+    gsDPSetRenderMode(G_RM_AA_ZB_OPA_SURF, G_RM_AA_ZB_OPA_SURF2),
+    gsDPSetCombineMode(G_CC_SHADE, G_CC_SHADE),
+    gsSPEndDisplayList(),
+};
+
+static void render_collision_point(struct CollisionPoint *point) {
+    Mtx mtx;
+    guTranslate(&mtx, point->point[0], point->point[1], point->point[2]);
+    gSPMatrix(gDisplayListHead++, &mtx, (G_MTX_MODELVIEW | G_MTX_PUSH));
+    gSPDisplayList(gDisplayListHead++, dl_draw_collision_point);
+    gSPPopMatrix(gDisplayListHead++, G_MTX_MODELVIEW);
+}
+
+void render_collision_points(void) {
+    gSPDisplayList(gDisplayListHead++, dl_draw_collision_point_start);
+    for (u32 i = 0; i < gNumCollisions; i++) {
+        struct Collision *col = &gCollisions[i];
+
+        for (u32 j = 0; j < col->numPoints; j++) {
+            render_collision_point(&col->points[j]);
+        }
+    }
+    gSPDisplayList(gDisplayListHead++, dl_draw_collision_point_end);
 }

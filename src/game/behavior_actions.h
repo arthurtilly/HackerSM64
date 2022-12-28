@@ -410,6 +410,7 @@ void bhv_breakable_box_small_init(void);
 void bhv_breakable_box_small_loop(void);
 void bhv_sliding_snow_mound_loop(void);
 void bhv_snow_mound_spawn_loop(void);
+void bhv_floating_platform_init(void);
 void bhv_floating_platform_loop(void);
 void bhv_arrow_lift_loop(void);
 void bhv_orange_number_init(void);

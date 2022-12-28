@@ -14,6 +14,8 @@ void bhv_init_changing_water_level_loop(void) {
     }
 }
 
+#include "game/rigid_body.h"
+
 void bhv_water_level_diamond_loop(void) {
     if (gEnvironmentRegions != NULL) {
         switch (o->oAction) {
@@ -29,6 +31,12 @@ void bhv_water_level_diamond_loop(void) {
                 if (!gWDWWaterLevelChanging && obj_check_if_collided_with_object(o, gMarioObject)) {
                     o->oAction++; // WATER_LEVEL_DIAMOND_ACT_CHANGE_WATER_LEVEL
                     gWDWWaterLevelChanging = TRUE;
+                    for (u32 i = 0; i < MAX_RIGID_BODIES; i++) {
+                        if (gRigidBodies[i].allocated && gRigidBodies[i].floating) {
+                            gRigidBodies[i].asleep = FALSE;
+                            gRigidBodies[i].motion = 10.f;
+                        }
+                    }
                 }
                 break;
 

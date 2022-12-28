@@ -12,13 +12,13 @@
 #define SLEEP_DETECTION_THRESHOLD 2.f
 
 #define PENETRATION_BIAS 0.1f
-#define PENETRATION_MIN_DEPTH 0.5f
-#define PENETRATION_MAX_DEPTH 50.f
+#define PENETRATION_MIN_DEPTH 0.f
+#define PENETRATION_MAX_DEPTH 30.f
 
 #define GRAVITY_FORCE -3.f
 #define FRICTION 0.5f
 
-#define NUM_RIGID_BODY_STEPS 2
+#define NUM_RIGID_BODY_STEPS 1
 #define NUM_IMPULSE_ITERATIONS 3
 
 #define MAX_RIGID_BODIES 40
@@ -51,13 +51,15 @@ struct RigidBody {
     u8 isStatic:1; // Can the rigid body move
     u8 asleep:1; // Body goes to sleep if inactive for a while, and collision is not calculated
     u8 hasGravity:1; // Apply gravity to the body
+    u8 floating:1; // Body is floating on water
 
     f32 mass;
     f32 invMass; // 1/m (for performance)
     f32 motion; // Average motion over the past few frames, used to determine if the body should sleep
-    f32 diagonal; // Radius of bounding sphere
     Vec3f size;
     Vec3f centerOfMass; // Position
+    Vec3f minCorner; // Lowest coords of AABB
+    Vec3f maxCorner; // Highest coords of AABB
     Quat angleQuat; // Orientation
 
     Vec3f linearVel; // Linear velocity

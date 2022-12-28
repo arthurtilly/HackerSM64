@@ -24,7 +24,7 @@ s32 check_if_moving_over_floor(f32 maxDist, f32 offset) {
     return (absf(floorHeight - o->oPosY) < maxDist);
 }
 
-Vec3f sPushableBoxSize = { 154.f, 154.f, 154.f };
+Vec3f sPushableBoxSize = { 153.f, 153.f, 153.f };
 
 f32 find_floor_height(f32 x, f32 y, f32 z);
 
@@ -32,7 +32,7 @@ void bhv_pushable_init(void) {
     u32 sleep = FALSE;
     f32 floorHeight = find_floor_height(o->oPosX, o->oPosY, o->oPosZ);
     if (ABS(o->oPosY - floorHeight) < 5.f) sleep = TRUE;
-    o->oPosY += 154.f;
+    o->oPosY += 153.f;
     struct RigidBody *body = allocate_rigid_body(&Cube_Mesh, 6.f, sPushableBoxSize, &o->oPosVec, &o->transform);
     rigid_body_set_yaw(body, o->oFaceAngleYaw);
     body->obj = o;

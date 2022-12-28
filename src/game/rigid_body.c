@@ -4,6 +4,7 @@
 #include "sm64.h"
 #include "rigid_body.h"
 #include "object_list_processor.h"
+#include "engine/surface_collision.h"
 
 struct RigidBody gRigidBodies[MAX_RIGID_BODIES];
 
@@ -216,6 +217,8 @@ struct RigidBody *allocate_rigid_body(struct MeshInfo *mesh, f32 mass, Vec3f siz
         if (!body->allocated) {
             body->allocated = TRUE;
             body->hasGravity = TRUE;
+            body->floating = FALSE;
+            body->asleep = FALSE;
             body->mesh = mesh;
             body->mass = mass;
             if (mass != 0.f) {
@@ -225,8 +228,6 @@ struct RigidBody *allocate_rigid_body(struct MeshInfo *mesh, f32 mass, Vec3f siz
                 body->invMass = 0.0f;
                 body->isStatic = TRUE;
             }
-            body->diagonal = sqrtf(size[0] * size[0] + size[1] * size[1] + size[2] * size[2]);
-            body->asleep = FALSE;
             vec3f_copy(body->size, size);
             vec3f_copy(body->centerOfMass, pos);
             body->angleQuat[0] = 0.0f;
@@ -263,10 +264,13 @@ void deallocate_rigid_body(struct RigidBody *body) {
 }
 
 u32 rigid_bodies_near(struct RigidBody *body1, struct RigidBody *body2) {
-    Vec3f dist;
-    f32 maxDist = body1->diagonal + body2->diagonal;
-    vec3f_sub2(dist, body1->centerOfMass, body2->centerOfMass);
-    return (vec3f_dot(dist, dist) <= maxDist * maxDist);
+    if (body1->maxCorner[0] < body2->minCorner[0]) return FALSE;
+    if (body1->minCorner[0] > body2->maxCorner[0]) return FALSE;
+    if (body1->maxCorner[1] < body2->minCorner[1]) return FALSE;
+    if (body1->minCorner[1] > body2->maxCorner[1]) return FALSE;
+    if (body1->maxCorner[2] < body2->minCorner[2]) return FALSE;
+    if (body1->minCorner[2] > body2->maxCorner[2]) return FALSE;
+    return TRUE;
 }
 
 /// Applies a force to a rigid body at a given point.
@@ -285,12 +289,6 @@ void rigid_body_add_force(struct RigidBody *body, Vec3f contactPoint, Vec3f forc
     if (wake) {
         body->asleep = FALSE;
         body->motion = 10.f;
-        for (u32 i = 0; i < MAX_RIGID_BODIES; i++) {
-            if ((gRigidBodies[i].allocated) && (body != &gRigidBodies[i]) && (rigid_bodies_near(body, &gRigidBodies[i]))) {
-                gRigidBodies[i].asleep = FALSE;
-                gRigidBodies[i].motion = 10.f;
-            }
-        }
     }
 }
 
@@ -351,6 +349,41 @@ void rigid_body_update_position(struct RigidBody *body) {
 #include "game_init.h"
 #include "game/level_update.h"
 
+void rigid_body_apply_gravity(struct RigidBody *body) {
+    Vec3f gravityForce;
+    vec3f_set(gravityForce, 0.f, GRAVITY_FORCE * body->mass, 0.f);
+    rigid_body_add_force(body, body->centerOfMass, gravityForce, FALSE);
+}
+
+void rigid_body_apply_buoyancy(struct RigidBody *body) {
+    body->floating = FALSE;
+    // Iterate over vertices of a cube
+    for (s32 x = -1; x < 2; x+=2) {
+        for (s32 y = -1; y < 2; y+=2) {
+            for (s32 z = -1; z < 2; z+=2) {
+                Vec3f buoyancyPoint, buoyancyPointWorld;
+                vec3f_set(buoyancyPoint, x*0.5f, y*0.5f, z*0.5f);
+                vec3f_mul(buoyancyPoint, body->size);
+                linear_mtxf_mul_vec3f_and_translate(*body->transform, buoyancyPointWorld, buoyancyPoint);
+                // Check if underwater
+                f32 waterLevel = find_water_level(buoyancyPointWorld[0], buoyancyPointWorld[2]);
+                if (buoyancyPointWorld[1] < waterLevel) {
+                    Vec3f buoyancyForce;
+                    vec3f_set(buoyancyForce, 0.f, -GRAVITY_FORCE * body->mass / 7.f, 0.f);
+                    rigid_body_add_force(body, buoyancyPointWorld, buoyancyForce, FALSE);
+                    body->linearVel[0] *= 0.99f;
+                    body->linearVel[1] *= 0.999f; // dampened less
+                    body->linearVel[2] *= 0.99f;
+                    body->angularVel[0] *= 0.99f;
+                    body->angularVel[1] *= 0.99f;
+                    body->angularVel[2] *= 0.99f;
+                    body->floating = TRUE;
+                }
+            }
+        }
+    }
+}
+
 /// Updates the velocity of a rigid body.
 void rigid_body_update_velocity(struct RigidBody *body) {
     if (body->isStatic || body->asleep) {
@@ -360,10 +393,9 @@ void rigid_body_update_velocity(struct RigidBody *body) {
     // Apply Gravity
     // Fg = m * g
     if (body->hasGravity) {
-        Vec3f gravityForce;
-        vec3f_set(gravityForce, 0.f, GRAVITY_FORCE * body->mass, 0.f);
-        rigid_body_add_force(body, body->centerOfMass, gravityForce, FALSE);
+        rigid_body_apply_gravity(body);
     }
+    rigid_body_apply_buoyancy(body);
 
     // Calculate linear velocity
     // Δv = (F / m) * Δt
@@ -452,7 +484,6 @@ void check_hit_rigid_body_wall(struct Surface *wall, Vec3f pos, f32 fvel, f32 yv
             force[1] = yvel;
             force[2] = fvel * coss(yaw);
             rigid_body_add_force(wall->object->rigidBody, pos, force, TRUE);
-            append_puppyprint_log("Wall force %d", (s32)fvel);
         }
     }
 }
