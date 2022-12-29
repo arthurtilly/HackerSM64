@@ -170,7 +170,7 @@ s32 edge_intersects_plane(Vec3f intersectionPoint, Vec3f edgePoint1, Vec3f edgeP
     // Find the point of intersection.
     vec3f_sub2(lineDir, edgePoint2, edgePoint1);
     f32 dot = vec3f_dot(planeNormal, lineDir);
-    if (dot == 0.f) return FALSE;
+    if (absf(dot) < 0.1f) return FALSE;
     vec3f_sub2(relPlane, planePoint, edgePoint1);
     dot = vec3f_dot(planeNormal, relPlane) / dot;
     if (dot < 0.f || dot > 1.f) return FALSE;
@@ -517,11 +517,11 @@ static const Gfx dl_draw_collision_point_end[] = {
 };
 
 static void render_collision_point(struct CollisionPoint *point) {
-    Mtx mtx;
-    guTranslate(&mtx, point->point[0], point->point[1], point->point[2]);
-    gSPMatrix(gDisplayListHead++, &mtx, (G_MTX_MODELVIEW | G_MTX_PUSH));
+    Mtx *mtx = alloc_display_list(sizeof(Mtx));
+    guTranslate(mtx, point->point[0], point->point[1], point->point[2]);
+    gSPMatrix(gDisplayListHead++, mtx, (G_MTX_PUSH));
     gSPDisplayList(gDisplayListHead++, dl_draw_collision_point);
-    gSPPopMatrix(gDisplayListHead++, G_MTX_MODELVIEW);
+    gSPPopMatrix(gDisplayListHead++, 0);
 }
 
 void render_collision_points(void) {

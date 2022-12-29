@@ -89,6 +89,8 @@ void rigid_body_collision_impulse(struct RigidBody *body1, struct RigidBody *bod
     u32 doSecondBody = (!(body2->isStatic));
     f32 body1InvMass = body1->invMass;
     f32 body2InvMass = (doSecondBody ? body2->invMass : 0.f);
+    Vec3f body1Linear, body2Linear, body1Angular, body2Angular;
+
     if (body1->isStatic) {
         return;
     }
@@ -98,6 +100,11 @@ void rigid_body_collision_impulse(struct RigidBody *body1, struct RigidBody *bod
         body2->asleep = FALSE;
     }
     increment_debug_counter(&pNumImpulsesApplied, 1);
+
+    vec3f_set(body1Linear, 0.f, 0.f, 0.f);
+    vec3f_set(body1Angular, 0.f, 0.f, 0.f);
+    vec3f_set(body2Linear, 0.f, 0.f, 0.f);
+    vec3f_set(body2Angular, 0.f, 0.f, 0.f);
 
     // Determine the relative velocity (dv) of the two bodies at the point of impact.
     Vec3f r0, r1, v0, v1, dv;
@@ -139,16 +146,16 @@ void rigid_body_collision_impulse(struct RigidBody *body1, struct RigidBody *bod
     vec3f_scale(P, normal, dPn);
 
     // Apply impulse
-    vec3f_add_scaled(body1->linearVel, P, body1InvMass);
+    vec3f_add_scaled(body1Linear, P, body1InvMass);
     vec3f_cross(temp1_1, P, r0);
     linear_mtxf_mul_vec3f(body1->invInertia, temp1_2, temp1_1);
-    vec3f_add(body1->angularVel, temp1_2);
+    vec3f_add(body1Angular, temp1_2);
 
     if (doSecondBody) {
-        vec3f_add_scaled(body2->linearVel, P, -body2InvMass);
+        vec3f_add_scaled(body2Linear, P, -body2InvMass);
         vec3f_cross(temp2_1, P, r1);
         linear_mtxf_mul_vec3f(body2->invInertia, temp2_2, temp2_1);
-        vec3f_sub(body2->angularVel, temp2_2);
+        vec3f_sub(body2Angular, temp2_2);
     }
 
     // Tangent Impulse Code (friction)
@@ -180,17 +187,29 @@ void rigid_body_collision_impulse(struct RigidBody *body1, struct RigidBody *bod
         vec3f_scale(P, tangent, dPt);
 
         // Apply impulse
-        vec3f_add_scaled(body1->linearVel, P, body1InvMass);
+        vec3f_add_scaled(body1Linear, P, body1InvMass);
         vec3f_cross(temp1_1, P, r0);
         linear_mtxf_mul_vec3f(body1->invInertia, temp1_2, temp1_1);
-        vec3f_add(body1->angularVel, temp1_2);
+        vec3f_add(body1Angular, temp1_2);
 
         if (doSecondBody) {
-            vec3f_add_scaled(body2->linearVel, P, -body2InvMass);
+            vec3f_add_scaled(body2Linear, P, -body2InvMass);
             vec3f_cross(temp2_1, P, r1);
             linear_mtxf_mul_vec3f(body2->invInertia, temp2_2, temp2_1);
-            vec3f_sub(body2->angularVel, temp2_2);
+            vec3f_sub(body2Angular, temp2_2);
         }
+    }
+
+    vec3f_add(body1->linearVel, body1Linear);
+    vec3f_add(body1->linearDisplacement, body1Linear);
+    vec3f_add(body1->angularVel, body1Angular);
+    vec3f_add(body1->angularDisplacement, body1Angular);
+
+    if (doSecondBody) {
+        vec3f_add(body2->linearVel, body2Linear);
+        vec3f_add(body2->linearDisplacement, body2Linear);
+        vec3f_add(body2->angularVel, body2Angular);
+        vec3f_add(body2->angularDisplacement, body2Angular);
     }
 }
 
@@ -292,6 +311,42 @@ void rigid_body_add_force(struct RigidBody *body, Vec3f contactPoint, Vec3f forc
     }
 }
 
+void rigid_body_apply_displacement(struct RigidBody *body, Vec3f linear, Vec3f angular) {
+    // Apply linear velocity
+    // Δx = v * Δt
+    vec3f_add_scaled(body->centerOfMass, linear, dt);
+    
+    // Apply angular velocity
+    // Δθ = ω * Δt
+    Quat angleChange;
+    f32 norm = sqrtf(angular[0] * angular[0] + angular[1] * angular[1] + angular[2] * angular[2]);
+    norm *= dt;
+
+    if (norm > 0.0001f) {
+        // Create quaternion from angular velocity
+        f32 sinVal = sinf(norm * 0.5f) / norm;
+        f32 cosVal = cosf(norm * 0.5f);
+
+        angleChange[0] = angular[0] * dt * sinVal;
+        angleChange[1] = angular[1] * dt * sinVal;
+        angleChange[2] = angular[2] * dt * sinVal;
+        angleChange[3] = cosVal;
+
+        // Apply and normalize quaternion
+        Quat curRot;
+        quat_copy(curRot, body->angleQuat);
+        quat_mul(body->angleQuat, curRot, angleChange);
+        quat_normalize(body->angleQuat);
+    }
+
+    rigid_body_update_matrix(body);
+
+    if (body->obj != NULL) {
+        vec3f_copy(&body->obj->oPosVec, body->centerOfMass);
+        body->obj->header.gfx.throwMatrix = body->transform;
+    }
+}
+
 /// Updates the position of a rigid body based on its velocity.
 void rigid_body_update_position(struct RigidBody *body) {
     if (body->isStatic) {
@@ -307,43 +362,14 @@ void rigid_body_update_position(struct RigidBody *body) {
         vec3f_set(body->angularVel, 0.0f, 0.0f, 0.0f);
     }
 
-    // Apply linear velocity
-    // Δx = v * Δt
-    vec3f_add_scaled(body->centerOfMass, body->linearVel, dt);
-    
-    // Apply angular velocity
-    // Δθ = ω * Δt
-    Quat angleChange;
-    f32 norm = sqrtf(body->angularVel[0] * body->angularVel[0] + body->angularVel[1] * body->angularVel[1] + body->angularVel[2] * body->angularVel[2]);
-    norm *= dt;
-
-    if (norm > 0.0001f) {
-        // Create quaternion from angular velocity
-        f32 sinVal = sinf(norm * 0.5f) / norm;
-        f32 cosVal = cosf(norm * 0.5f);
-
-        angleChange[0] = body->angularVel[0] * dt * sinVal;
-        angleChange[1] = body->angularVel[1] * dt * sinVal;
-        angleChange[2] = body->angularVel[2] * dt * sinVal;
-        angleChange[3] = cosVal;
-
-        // Apply and normalize quaternion
-        Quat curRot;
-        quat_copy(curRot, body->angleQuat);
-        quat_mul(body->angleQuat, curRot, angleChange);
-        quat_normalize(body->angleQuat);
-    }
+    rigid_body_apply_displacement(body, body->linearVel, body->angularVel);
 
     // Reset forces and torques
     vec3f_set(body->netForce, 0.0f, 0.0f, 0.0f);
     vec3f_set(body->netTorque, 0.0f, 0.0f, 0.0f);
 
-    rigid_body_update_matrix(body);
-
-    if (body->obj != NULL) {
-        vec3f_copy(&body->obj->oPosVec, body->centerOfMass);
-        body->obj->header.gfx.throwMatrix = body->transform;
-    }
+    vec3f_set(body->linearDisplacement, 0.f, 0.f, 0.f);
+    vec3f_set(body->angularDisplacement, 0.f, 0.f, 0.f);
 }
 
 #include "game_init.h"
@@ -427,6 +453,14 @@ void apply_impulses(void) {
             rigid_body_collision_impulse(col->body1, col->body2, colPoint->point, normal, colPoint->penetration);
         }
     }
+    for (u32 i = 0; i < MAX_RIGID_BODIES; i++) {
+        struct RigidBody *body = &gRigidBodies[i];
+        if (body->allocated) {
+            rigid_body_apply_displacement(body, body->linearDisplacement, body->angularDisplacement);
+            vec3f_set(body->linearDisplacement, 0.f, 0.f, 0.f);
+            vec3f_set(body->angularDisplacement, 0.f, 0.f, 0.f);
+        }
+    }
 }
 
 /// Perform one step for the rigid body physics system.
@@ -443,26 +477,20 @@ void do_rigid_body_step(void) {
         }
     }
 
-    // Check collisions
-    for (u32 i = 0; i < MAX_RIGID_BODIES; i++) {
-        rigid_body_do_collision(i);
-    }
-
     // Update velocity
     for (u32 i = 0; i < MAX_RIGID_BODIES; i++) {
         if (gRigidBodies[i].allocated) {
             rigid_body_update_velocity(&gRigidBodies[i]);
+            rigid_body_update_position(&gRigidBodies[i]);
         }
+    }
+    // Check collisions
+    for (u32 i = 0; i < MAX_RIGID_BODIES; i++) {
+        rigid_body_do_collision(i);
     }
     // Apply impulses
     for (u32 iter = 0; iter < NUM_IMPULSE_ITERATIONS; iter++) {
         apply_impulses();
-    }
-    // Update position
-    for (u32 i = 0; i < MAX_RIGID_BODIES; i++) {
-        if (gRigidBodies[i].allocated) {
-            rigid_body_update_position(&gRigidBodies[i]);
-        }
     }
 }
 

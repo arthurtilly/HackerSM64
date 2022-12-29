@@ -13,12 +13,12 @@
 
 #define PENETRATION_BIAS 0.1f
 #define PENETRATION_MIN_DEPTH 0.f
-#define PENETRATION_MAX_DEPTH 30.f
+#define PENETRATION_MAX_DEPTH 50.f
 
 #define GRAVITY_FORCE -3.f
 #define FRICTION 0.5f
 
-#define NUM_RIGID_BODY_STEPS 1
+#define NUM_RIGID_BODY_STEPS 2
 #define NUM_IMPULSE_ITERATIONS 3
 
 #define MAX_RIGID_BODIES 40
@@ -64,6 +64,8 @@ struct RigidBody {
 
     Vec3f linearVel; // Linear velocity
     Vec3f angularVel; // Angular velocity
+    Vec3f linearDisplacement;
+    Vec3f angularDisplacement;
     Vec3f netForce; // Total force applied
     Vec3f netTorque; // Total torque applied
 
