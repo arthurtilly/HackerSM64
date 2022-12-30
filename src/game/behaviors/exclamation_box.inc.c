@@ -10,7 +10,7 @@ struct ExclamationBoxContents {
 
 struct ObjectHitbox sExclamationBoxHitbox = {
     /* interactType:      */ INTERACT_BREAKABLE,
-    /* downOffset:        */ 30,
+    /* downOffset:        */ 5,
     /* damageOrCoinValue: */ 0,
     /* health:            */ 1,
     /* numLootCoins:      */ 0,
@@ -171,13 +171,9 @@ ObjActionFunc sExclamationBoxActions[] = {
 Vec3f sExclamationBoxSize = { 52.f, 52.f, 52.f };
 
 void bhv_exclamation_box_init(void) {
-    o->oPosY += 52.f;
-    struct RigidBody *body = allocate_rigid_body(&Cube_Mesh, 2.f, sExclamationBoxSize, &o->oPosVec, &gCurrentObject->transform);
-    rigid_body_set_yaw(body, o->oFaceAngleYaw);
-    body->obj = o;
+    struct RigidBody *body = allocate_rigid_body_from_object(o, &Cube_Mesh, 2.f, sExclamationBoxSize, 0.f, -52.f, 0.f);
     body->asleep = TRUE;
     body->hasGravity = FALSE;
-    o->rigidBody = body;
     exclamation_box_act_init();
 }
 

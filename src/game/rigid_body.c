@@ -108,15 +108,13 @@ void rigid_body_collision_impulse(struct RigidBody *body1, struct RigidBody *bod
 
     // Determine the relative velocity (dv) of the two bodies at the point of impact.
     Vec3f r0, r1, v0, v1, dv;
-    vec3f_copy(r0, hitPoint);
-    vec3f_sub(r0, body1->centerOfMass);
+    vec3f_sub2(r0, hitPoint, body1->centerOfMass);
     vec3f_cross(v0, r0, body1->angularVel);
     vec3f_add(v0, body1->linearVel);
     vec3f_copy(dv, v0);
 
     if (doSecondBody) {
-        vec3f_copy(r1, hitPoint);
-        vec3f_sub(r1, body2->centerOfMass);
+        vec3f_sub2(r1, hitPoint, body2->centerOfMass);
         vec3f_cross(v1, r1, body2->angularVel);
         vec3f_add(v1, body2->linearVel);
         vec3f_sub(dv, v1);
@@ -215,7 +213,7 @@ void rigid_body_collision_impulse(struct RigidBody *body1, struct RigidBody *bod
 
 /// Updates the rigid body's transformation matrix and its inertia tensor.
 void rigid_body_update_matrix(struct RigidBody *body) {
-    mtxf_from_quat(body->angleQuat, *body->transform);
+    mtxf_from_quat(body->angleQuat, body->transform);
 
     // Calculate the inverse of the inertia tensor.
     // will need to be modified a ton for rigid bodies that aren't uniform size in all dimensions
@@ -225,11 +223,23 @@ void rigid_body_update_matrix(struct RigidBody *body) {
     body->invInertia[1][1] = i;
     body->invInertia[2][2] = i;
 
-    vec3f_copy((*body->transform)[3], body->centerOfMass);
+    vec3f_copy(body->transform[3], body->centerOfMass);
+}
+
+struct RigidBody *allocate_rigid_body_from_object(struct Object *obj, struct MeshInfo *mesh, f32 mass, Vec3f size, f32 xOffset, f32 yOffset, f32 zOffset) {
+    Vec3f pos;
+    vec3f_set(obj->rigidBodyOffset, xOffset, yOffset, zOffset);
+    vec3f_copy(pos, &obj->oPosVec);
+    vec3f_sub(pos, obj->rigidBodyOffset);
+    struct RigidBody *body = allocate_rigid_body(mesh, mass, size, pos);
+    rigid_body_set_yaw(body, obj->oFaceAngleYaw);
+    body->obj = obj;
+    obj->rigidBody = body;
+    return body;
 }
 
 /// Allocate a rigid body and return a pointer to it.
-struct RigidBody *allocate_rigid_body(struct MeshInfo *mesh, f32 mass, Vec3f size, Vec3f pos, Mat4 *transform) {
+struct RigidBody *allocate_rigid_body(struct MeshInfo *mesh, f32 mass, Vec3f size, Vec3f pos) {
     // Search list for deallocated rigid body
     for (u32 i = 0; i < MAX_RIGID_BODIES; i++) {
         struct RigidBody *body = &gRigidBodies[i];
@@ -259,7 +269,6 @@ struct RigidBody *allocate_rigid_body(struct MeshInfo *mesh, f32 mass, Vec3f siz
             vec3f_set(body->netForce, 0.0f, 0.0f, 0.0f);
             vec3f_set(body->netTorque, 0.0f, 0.0f, 0.0f);
 
-            body->transform = transform;
             body->obj = NULL;
             rigid_body_update_matrix(body);
             return body;
@@ -340,26 +349,12 @@ void rigid_body_apply_displacement(struct RigidBody *body, Vec3f linear, Vec3f a
     }
 
     rigid_body_update_matrix(body);
-
-    if (body->obj != NULL) {
-        vec3f_copy(&body->obj->oPosVec, body->centerOfMass);
-        body->obj->header.gfx.throwMatrix = body->transform;
-    }
 }
 
 /// Updates the position of a rigid body based on its velocity.
 void rigid_body_update_position(struct RigidBody *body) {
     if (body->isStatic) {
         return;
-    }
-
-        f32 motion = vec3f_dot(body->linearVel, body->linearVel) + vec3f_dot(body->angularVel, body->angularVel);
-    body->motion = SLEEP_DETECTION_BIAS * body->motion + (1 - SLEEP_DETECTION_BIAS) * motion;
-
-    if (body->motion < SLEEP_DETECTION_THRESHOLD) {
-        body->asleep = TRUE;
-        vec3f_set(body->linearVel, 0.0f, 0.0f, 0.0f);
-        vec3f_set(body->angularVel, 0.0f, 0.0f, 0.0f);
     }
 
     rigid_body_apply_displacement(body, body->linearVel, body->angularVel);
@@ -390,7 +385,7 @@ void rigid_body_apply_buoyancy(struct RigidBody *body) {
                 Vec3f buoyancyPoint, buoyancyPointWorld;
                 vec3f_set(buoyancyPoint, x*0.5f, y*0.5f, z*0.5f);
                 vec3f_mul(buoyancyPoint, body->size);
-                linear_mtxf_mul_vec3f_and_translate(*body->transform, buoyancyPointWorld, buoyancyPoint);
+                linear_mtxf_mul_vec3f_and_translate(body->transform, buoyancyPointWorld, buoyancyPoint);
                 // Check if underwater
                 f32 waterLevel = find_water_level(buoyancyPointWorld[0], buoyancyPointWorld[2]);
                 if (buoyancyPointWorld[1] < waterLevel) {
@@ -453,14 +448,6 @@ void apply_impulses(void) {
             rigid_body_collision_impulse(col->body1, col->body2, colPoint->point, normal, colPoint->penetration);
         }
     }
-    for (u32 i = 0; i < MAX_RIGID_BODIES; i++) {
-        struct RigidBody *body = &gRigidBodies[i];
-        if (body->allocated) {
-            rigid_body_apply_displacement(body, body->linearDisplacement, body->angularDisplacement);
-            vec3f_set(body->linearDisplacement, 0.f, 0.f, 0.f);
-            vec3f_set(body->angularDisplacement, 0.f, 0.f, 0.f);
-        }
-    }
 }
 
 /// Perform one step for the rigid body physics system.
@@ -491,6 +478,30 @@ void do_rigid_body_step(void) {
     // Apply impulses
     for (u32 iter = 0; iter < NUM_IMPULSE_ITERATIONS; iter++) {
         apply_impulses();
+    }
+    for (u32 i = 0; i < MAX_RIGID_BODIES; i++) {
+        struct RigidBody *body = &gRigidBodies[i];
+        if (body->allocated) {
+            rigid_body_apply_displacement(body, body->linearDisplacement, body->angularDisplacement);
+            vec3f_set(body->linearDisplacement, 0.f, 0.f, 0.f);
+            vec3f_set(body->angularDisplacement, 0.f, 0.f, 0.f);
+            f32 motion = vec3f_dot(body->linearVel, body->linearVel) + vec3f_dot(body->angularVel, body->angularVel);
+            body->motion = SLEEP_DETECTION_BIAS * body->motion + (1.f - SLEEP_DETECTION_BIAS) * motion;
+
+            if (body->motion < SLEEP_DETECTION_THRESHOLD) {
+                body->asleep = TRUE;
+                vec3f_set(body->linearVel, 0.0f, 0.0f, 0.0f);
+                vec3f_set(body->angularVel, 0.0f, 0.0f, 0.0f);
+            }
+
+            if (body->obj != NULL) {
+                Mat4 transformMtx;
+                mtxf_translate(transformMtx, body->obj->rigidBodyOffset);
+                mtxf_mul(body->obj->transform, transformMtx, body->transform);
+                vec3f_copy(&body->obj->oPosVec, body->obj->transform[3]);
+                body->obj->header.gfx.throwMatrix = &body->obj->transform;
+            }
+        }
     }
 }
 

@@ -69,12 +69,18 @@ struct Collision *init_collision(struct RigidBody *body1, struct RigidBody *body
     return collision;
 }
 
+void vec3f_sub2(Vec3f dest, Vec3f a, Vec3f b) {
+    dest[0] = a[0] - b[0];
+    dest[1] = a[1] - b[1];
+    dest[2] = a[2] - b[2];
+}
+
 /// Adds a contact point to the given collision struct.
 void add_collision(struct Collision *collision, Vec3f point, Vec3f normal, f32 penetration) {
     increment_debug_counter(&pNumCols, 1);
     f32 normalMultiplier = (sReverseContactPoint ? -1.f : 1.f);
     // Check if there is a nearby point already in the collision.
-    for (s32 i = 0; i < collision->numPoints; i++) {
+    for (u32 i = 0; i < collision->numPoints; i++) {
         Vec3f dist;
         vec3f_sub2(dist, point, collision->points[i].point);
         if (vec3f_dot(dist, dist) < 0.1f) {
@@ -93,12 +99,6 @@ void add_collision(struct Collision *collision, Vec3f point, Vec3f normal, f32 p
     vec3f_scale(colPoint->normal, normal, normalMultiplier);
     colPoint->penetration = penetration;
     collision->numPoints++;
-}
-
-void vec3f_sub2(Vec3f dest, Vec3f a, Vec3f b) {
-    dest[0] = a[0] - b[0];
-    dest[1] = a[1] - b[1];
-    dest[2] = a[2] - b[2];
 }
 
 /// Check how close a point is to a plane along the plane's normal.
@@ -289,7 +289,7 @@ void calculate_mesh(struct RigidBody *body, Vec3f vertices[], struct TriangleInf
         Vec3f vertex;
         vec3f_copy(vertex, body->mesh->vertices[i]);
         vec3f_mul(vertex, body->size);
-        linear_mtxf_mul_vec3f_and_translate(*body->transform, vertices[i], vertex);
+        linear_mtxf_mul_vec3f_and_translate(body->transform, vertices[i], vertex);
         for (u32 j = 0; j < 3; j++) {
             if (vertices[i][j] < body->minCorner[j]) body->minCorner[j] = vertices[i][j];
             if (vertices[i][j] > body->maxCorner[j]) body->maxCorner[j] = vertices[i][j];
@@ -476,12 +476,12 @@ void rigid_body_do_collision(u32 bodyIndex) {
 
     calculate_mesh(body, sCurrentVertices, sCurrentTris, sCurrentQuads);
 
-    rigid_body_check_surf_collisions(body);
     for (u32 j = bodyIndex + 1; j < MAX_RIGID_BODIES; j++) {
         if (gRigidBodies[j].allocated) {
             rigid_body_check_body_collisions(body, &gRigidBodies[j]);
         }
     }
+    rigid_body_check_surf_collisions(body);
 }
 
 static const Vtx vertex_collision_point[] = {
@@ -518,10 +518,12 @@ static const Gfx dl_draw_collision_point_end[] = {
 
 static void render_collision_point(struct CollisionPoint *point) {
     Mtx *mtx = alloc_display_list(sizeof(Mtx));
-    guTranslate(mtx, point->point[0], point->point[1], point->point[2]);
-    gSPMatrix(gDisplayListHead++, mtx, (G_MTX_PUSH));
+    Mat4 mtxf;
+    mtxf_align_terrain_normal(mtxf, point->normal, point->point, 0);
+    mtxf_to_mtx(mtx, mtxf);
+    gSPMatrix(gDisplayListHead++, mtx, (G_MTX_MODELVIEW | G_MTX_PUSH));
     gSPDisplayList(gDisplayListHead++, dl_draw_collision_point);
-    gSPPopMatrix(gDisplayListHead++, 0);
+    gSPPopMatrix(gDisplayListHead++, G_MTX_MODELVIEW);
 }
 
 void render_collision_points(void) {

@@ -28,16 +28,13 @@ f32 sFloatingPlatformMasses[2] = {
 
 void bhv_floating_platform_init(void) {
     o->oPosY = floating_platform_find_home_y();
-    struct RigidBody *body = allocate_rigid_body(&Cube_Mesh,
+    struct RigidBody *body = allocate_rigid_body_from_object(o, &Cube_Mesh,
         sFloatingPlatformMasses[o->oBehParams2ndByte],
         sFloatingPlatformSizes[o->oBehParams2ndByte],
-        &o->oPosVec, &o->transform);
-    rigid_body_set_yaw(body, o->oFaceAngleYaw);
-    
-    body->obj = o;
+        0.f, 0.f, 0.f);
+
     body->asleep = o->oFloatingPlatformIsOnFloor;
     body->floating = !o->oFloatingPlatformIsOnFloor;
-    o->rigidBody = body;
 }
 
 void bhv_floating_platform_loop(void) {

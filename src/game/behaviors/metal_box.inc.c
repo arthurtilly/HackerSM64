@@ -4,11 +4,11 @@
 
 struct ObjectHitbox sMetalBoxHitbox = {
     /* interactType:      */ INTERACT_NONE,
-    /* downOffset:        */ 150,
+    /* downOffset:        */ 0,
     /* damageOrCoinValue: */ 0,
     /* health:            */ 1,
     /* numLootCoins:      */ 0,
-    /* radius:            */ 250,
+    /* radius:            */ 220,
     /* height:            */ 300,
     /* hurtboxRadius:     */ 220,
     /* hurtboxHeight:     */ 300,
@@ -32,12 +32,8 @@ void bhv_pushable_init(void) {
     u32 sleep = FALSE;
     f32 floorHeight = find_floor_height(o->oPosX, o->oPosY, o->oPosZ);
     if (ABS(o->oPosY - floorHeight) < 5.f) sleep = TRUE;
-    o->oPosY += 153.f;
-    struct RigidBody *body = allocate_rigid_body(&Cube_Mesh, 6.f, sPushableBoxSize, &o->oPosVec, &o->transform);
-    rigid_body_set_yaw(body, o->oFaceAngleYaw);
-    body->obj = o;
+    struct RigidBody *body = allocate_rigid_body_from_object(o, &Cube_Mesh, 6.f, sPushableBoxSize, 0.f, -153.f, 0.f);
     body->asleep = sleep;
-    o->rigidBody = body;
 }
 
 void bhv_pushable_loop(void) {
@@ -48,19 +44,10 @@ void bhv_pushable_loop(void) {
 Vec3f sSignpostSize = { 45.f, 63.f, 16.f };
 
 void bhv_message_panel_init(void) {
-    u32 sleep = FALSE;
-    f32 floorHeight = find_floor_height(o->oPosX, o->oPosY, o->oPosZ);
-    if (ABS(o->oPosY - floorHeight) < 5.f) sleep = TRUE;
-    o->oPosY += 63.f;
-    struct RigidBody *body = allocate_rigid_body(&Cube_Mesh, 1.f, sSignpostSize, &o->oPosVec, &o->transform);
-    rigid_body_set_yaw(body, o->oFaceAngleYaw);
-    
-    body->obj = o;
-    body->asleep = sleep;
-    o->rigidBody = body;
+    struct RigidBody *body = allocate_rigid_body_from_object(o, &Cube_Mesh, 1.f, sSignpostSize, 0.f, -63.f, 0.f);
+    body->asleep = TRUE;
 }
 
 void bhv_message_panel_loop(void) {
     rigid_body_general_object_loop();
-    
 }

@@ -338,6 +338,7 @@ struct Object {
     /*0x208*/ f32 hitboxDownOffset;
     /*0x20C*/ const BehaviorScript *behavior;
     /*0x210*/ struct RigidBody *rigidBody;
+    /*     */ Vec3f rigidBodyOffset;
     /*0x214*/ struct Object *platform;
     /*0x218*/ void *collisionData;
     /*0x21C*/ Mat4 transform;

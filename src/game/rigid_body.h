@@ -11,7 +11,7 @@
 #define SLEEP_DETECTION_BIAS 0.95f
 #define SLEEP_DETECTION_THRESHOLD 2.f
 
-#define PENETRATION_BIAS 0.1f
+#define PENETRATION_BIAS 0.f
 #define PENETRATION_MIN_DEPTH 0.f
 #define PENETRATION_MAX_DEPTH 50.f
 
@@ -69,7 +69,7 @@ struct RigidBody {
     Vec3f netForce; // Total force applied
     Vec3f netTorque; // Total torque applied
 
-    Mat4 *transform; // Pointer to the transformation matrix of the body
+    Mat4 transform; // The transformation matrix of the body
     Mat4 invInertia; // Inverse inertia tensor
 
     struct MeshInfo *mesh; // Pointer to the mesh info of the body
@@ -81,7 +81,8 @@ extern struct RigidBody gRigidBodies[MAX_RIGID_BODIES];
 void vec3f_scale(Vec3f dest, Vec3f src, f32 scale);
 void vec3f_add_scaled(Vec3f dest, Vec3f src, f32 scale);
 
-struct RigidBody *allocate_rigid_body(struct MeshInfo *mesh, f32 mass, Vec3f size, Vec3f pos, Mat4 *transform);
+struct RigidBody *allocate_rigid_body_from_object(struct Object *obj, struct MeshInfo *mesh, f32 mass, Vec3f size, f32 xOffset, f32 yOffset, f32 zOffset);
+struct RigidBody *allocate_rigid_body(struct MeshInfo *mesh, f32 mass, Vec3f size, Vec3f pos);
 void deallocate_rigid_body(struct RigidBody *body);
 void rigid_body_set_yaw(struct RigidBody *body, s16 yaw);
 u32 rigid_bodies_near(struct RigidBody *body1, struct RigidBody *body2);
