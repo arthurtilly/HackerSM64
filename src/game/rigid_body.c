@@ -27,19 +27,30 @@ void increment_debug_counter(u32 *counter, s32 amount) {
 }
 #endif
 
-/// Set a vector to another vector scaled by a constant.
-void vec3f_scale(Vec3f dest, Vec3f src, f32 scale) {
-    dest[0] = src[0] * scale;
-    dest[1] = src[1] * scale;
-    dest[2] = src[2] * scale;
+// Sets matrix 'dest' to the matrix product T(b) * a. Assumes that b has no
+// translation component.
+void mtxf_mul_transpose(Mat4 dest, Mat4 a, Mat4 b) {
+    Vec3f entry;
+    register f32 *temp  = (f32 *)a;
+    register f32 *temp2 = (f32 *)dest;
+    register f32 *temp3;
+    register s32 i;
+    for (i = 0; i < 16; i++) {
+        vec3_copy(entry, temp);
+        for (temp3 = (f32 *)b; (i & 3) != 3; i++) {
+            *temp2 = ((entry[0] * temp3[0])
+                    + (entry[1] * temp3[1])
+                    + (entry[2] * temp3[2]));
+            temp2++;
+            temp3 += 4;
+        }
+        *temp2 = 0;
+        temp += 4;
+        temp2++;
+    }
+    ((u32 *) dest)[15] = FLOAT_ONE;
 }
 
-/// Add a vector scaled by a constant to another vector.
-void vec3f_add_scaled(Vec3f dest, Vec3f src, f32 scale) {
-    dest[0] += src[0] * scale;
-    dest[1] += src[1] * scale;
-    dest[2] += src[2] * scale;
-}
 
 /// Convert a quaternion to a rotation matrix.
 void mtxf_from_quat(Quat q, Mat4 dest) {
@@ -217,11 +228,20 @@ void rigid_body_update_matrix(struct RigidBody *body) {
 
     // Calculate the inverse of the inertia tensor.
     // will need to be modified a ton for rigid bodies that aren't uniform size in all dimensions
-	f32 i = 1.f / ((body->size[0] * body->size[0]) * body->mass);
+	f32 x2 = body->size[0] * body->size[0];
+    f32 y2 = body->size[1] * body->size[1];
+    f32 z2 = body->size[2] * body->size[2];
+    f32 ix = 2.f / ((y2 + z2) * body->mass);
+    f32 iy = 2.f / ((x2 + z2) * body->mass);
+    f32 iz = 2.f / ((x2 + y2) * body->mass);
     mtxf_identity(body->invInertia);
-    body->invInertia[0][0] = i;
-    body->invInertia[1][1] = i;
-    body->invInertia[2][2] = i;
+    body->invInertia[0][0] = ix;
+    body->invInertia[1][1] = iy;
+    body->invInertia[2][2] = iz;
+
+    //Mat4 tmp;
+   // mtxf_mul(tmp, body->transform, body->invInertia);
+    //mtxf_mul_transpose(body->invInertia, tmp, body->transform);
 
     vec3f_copy(body->transform[3], body->centerOfMass);
 }
@@ -352,7 +372,7 @@ void rigid_body_apply_displacement(struct RigidBody *body, Vec3f linear, Vec3f a
 }
 
 /// Updates the position of a rigid body based on its velocity.
-void rigid_body_update_position(struct RigidBody *body) {
+void rigid_body_update_position_from_velocity(struct RigidBody *body) {
     if (body->isStatic) {
         return;
     }
@@ -365,6 +385,28 @@ void rigid_body_update_position(struct RigidBody *body) {
 
     vec3f_set(body->linearDisplacement, 0.f, 0.f, 0.f);
     vec3f_set(body->angularDisplacement, 0.f, 0.f, 0.f);
+}
+
+void rigid_body_update_position_from_collisions(struct RigidBody *body) {
+    rigid_body_apply_displacement(body, body->linearDisplacement, body->angularDisplacement);
+    vec3f_set(body->linearDisplacement, 0.f, 0.f, 0.f);
+    vec3f_set(body->angularDisplacement, 0.f, 0.f, 0.f);
+    f32 motion = vec3f_dot(body->linearVel, body->linearVel) + vec3f_dot(body->angularVel, body->angularVel);
+    body->motion = SLEEP_DETECTION_BIAS * body->motion + (1.f - SLEEP_DETECTION_BIAS) * motion;
+
+    if (body->motion < SLEEP_DETECTION_THRESHOLD) {
+        body->asleep = TRUE;
+        vec3f_set(body->linearVel, 0.0f, 0.0f, 0.0f);
+        vec3f_set(body->angularVel, 0.0f, 0.0f, 0.0f);
+    }
+
+    if (body->obj != NULL) {
+        Mat4 transformMtx;
+        mtxf_translate(transformMtx, body->obj->rigidBodyOffset);
+        mtxf_mul(body->obj->transform, transformMtx, body->transform);
+        vec3f_copy(&body->obj->oPosVec, body->obj->transform[3]);
+        body->obj->header.gfx.throwMatrix = &body->obj->transform;
+    }
 }
 
 #include "game_init.h"
@@ -464,43 +506,28 @@ void do_rigid_body_step(void) {
         }
     }
 
-    // Update velocity
+    // Update velocity and gravity
     for (u32 i = 0; i < MAX_RIGID_BODIES; i++) {
         if (gRigidBodies[i].allocated) {
             rigid_body_update_velocity(&gRigidBodies[i]);
-            rigid_body_update_position(&gRigidBodies[i]);
+            rigid_body_update_position_from_velocity(&gRigidBodies[i]);
         }
     }
+
     // Check collisions
     for (u32 i = 0; i < MAX_RIGID_BODIES; i++) {
         rigid_body_do_collision(i);
     }
+
     // Apply impulses
     for (u32 iter = 0; iter < NUM_IMPULSE_ITERATIONS; iter++) {
         apply_impulses();
     }
+
+    // Update position
     for (u32 i = 0; i < MAX_RIGID_BODIES; i++) {
-        struct RigidBody *body = &gRigidBodies[i];
-        if (body->allocated) {
-            rigid_body_apply_displacement(body, body->linearDisplacement, body->angularDisplacement);
-            vec3f_set(body->linearDisplacement, 0.f, 0.f, 0.f);
-            vec3f_set(body->angularDisplacement, 0.f, 0.f, 0.f);
-            f32 motion = vec3f_dot(body->linearVel, body->linearVel) + vec3f_dot(body->angularVel, body->angularVel);
-            body->motion = SLEEP_DETECTION_BIAS * body->motion + (1.f - SLEEP_DETECTION_BIAS) * motion;
-
-            if (body->motion < SLEEP_DETECTION_THRESHOLD) {
-                body->asleep = TRUE;
-                vec3f_set(body->linearVel, 0.0f, 0.0f, 0.0f);
-                vec3f_set(body->angularVel, 0.0f, 0.0f, 0.0f);
-            }
-
-            if (body->obj != NULL) {
-                Mat4 transformMtx;
-                mtxf_translate(transformMtx, body->obj->rigidBodyOffset);
-                mtxf_mul(body->obj->transform, transformMtx, body->transform);
-                vec3f_copy(&body->obj->oPosVec, body->obj->transform[3]);
-                body->obj->header.gfx.throwMatrix = &body->obj->transform;
-            }
+        if (gRigidBodies[i].allocated) {
+            rigid_body_update_position_from_collisions(&gRigidBodies[i]);
         }
     }
 }

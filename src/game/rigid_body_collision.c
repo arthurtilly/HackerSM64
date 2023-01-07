@@ -69,12 +69,6 @@ struct Collision *init_collision(struct RigidBody *body1, struct RigidBody *body
     return collision;
 }
 
-void vec3f_sub2(Vec3f dest, Vec3f a, Vec3f b) {
-    dest[0] = a[0] - b[0];
-    dest[1] = a[1] - b[1];
-    dest[2] = a[2] - b[2];
-}
-
 /// Adds a contact point to the given collision struct.
 void add_collision(struct Collision *collision, Vec3f point, Vec3f normal, f32 penetration) {
     increment_debug_counter(&pNumCols, 1);

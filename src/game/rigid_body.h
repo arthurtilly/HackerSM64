@@ -19,7 +19,7 @@
 #define FRICTION 0.5f
 
 #define NUM_RIGID_BODY_STEPS 2
-#define NUM_IMPULSE_ITERATIONS 3
+#define NUM_IMPULSE_ITERATIONS 1
 
 #define MAX_RIGID_BODIES 40
 
@@ -43,6 +43,26 @@ void increment_debug_counter(u32 *counter, s32 amount);
 #define increment_debug_counter(_, _)
 
 #endif
+
+/// Add a vector scaled by a constant to another vector.
+#define vec3f_add_scaled(dest, src, scale) { \
+    dest[0] += src[0] * scale; \
+    dest[1] += src[1] * scale; \
+    dest[2] += src[2] * scale; \
+}
+
+/// Set a vector to another vector scaled by a constant.
+#define vec3f_scale(dest, src, scale) { \
+    dest[0] = src[0] * scale; \
+    dest[1] = src[1] * scale; \
+    dest[2] = src[2] * scale; \
+}
+
+#define vec3f_sub2(dest, a, b) { \
+    dest[0] = a[0] - b[0]; \
+    dest[1] = a[1] - b[1]; \
+    dest[2] = a[2] - b[2]; \
+}
 
 
 // Controls an instance of a rigid body
@@ -77,9 +97,6 @@ struct RigidBody {
 };
 
 extern struct RigidBody gRigidBodies[MAX_RIGID_BODIES];
-
-void vec3f_scale(Vec3f dest, Vec3f src, f32 scale);
-void vec3f_add_scaled(Vec3f dest, Vec3f src, f32 scale);
 
 struct RigidBody *allocate_rigid_body_from_object(struct Object *obj, struct MeshInfo *mesh, f32 mass, Vec3f size, f32 xOffset, f32 yOffset, f32 zOffset);
 struct RigidBody *allocate_rigid_body(struct MeshInfo *mesh, f32 mass, Vec3f size, Vec3f pos);
