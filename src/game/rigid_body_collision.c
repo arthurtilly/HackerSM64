@@ -76,7 +76,7 @@ void add_collision(struct Collision *collision, Vec3f point, Vec3f normal, f32 p
     // Check if there is a nearby point already in the collision.
     for (u32 i = 0; i < collision->numPoints; i++) {
         Vec3f dist;
-        vec3f_sub2(dist, point, collision->points[i].point);
+        vec3f_diff(dist, point, collision->points[i].point);
         if (vec3f_dot(dist, dist) < 0.1f) {
             vec3f_scale(dist, normal, normalMultiplier);
             if (vec3f_dot(dist, collision->points[i].normal) > 0.9f) {
@@ -98,7 +98,7 @@ void add_collision(struct Collision *collision, Vec3f point, Vec3f normal, f32 p
 /// Check how close a point is to a plane along the plane's normal.
 f32 point_in_plane(Vec3f point, Vec3f planePoint, Vec3f normal) {
     Vec3f planeToPointRelative;
-    vec3f_sub2(planeToPointRelative, planePoint, point);
+    vec3f_diff(planeToPointRelative, planePoint, point);
     return vec3f_dot(planeToPointRelative, normal);
 }
 
@@ -109,13 +109,13 @@ s32 point_is_in_tri(Vec3f point, struct TriangleInfo *tri) {
     Vec3f cross1, cross2, cross3;
     f32 dot1, dot2, dot3;
 
-    vec3f_sub2(edge1, tri->vertices[1], tri->vertices[0]);
-    vec3f_sub2(edge2, tri->vertices[2], tri->vertices[1]);
-    vec3f_sub2(edge3, tri->vertices[0], tri->vertices[2]);
+    vec3f_diff(edge1, tri->vertices[1], tri->vertices[0]);
+    vec3f_diff(edge2, tri->vertices[2], tri->vertices[1]);
+    vec3f_diff(edge3, tri->vertices[0], tri->vertices[2]);
 
-    vec3f_sub2(pointToVertex1, point, tri->vertices[0]);
-    vec3f_sub2(pointToVertex2, point, tri->vertices[1]);
-    vec3f_sub2(pointToVertex3, point, tri->vertices[2]);
+    vec3f_diff(pointToVertex1, point, tri->vertices[0]);
+    vec3f_diff(pointToVertex2, point, tri->vertices[1]);
+    vec3f_diff(pointToVertex3, point, tri->vertices[2]);
 
     vec3f_cross(cross1, edge1, pointToVertex1);
     vec3f_cross(cross2, edge2, pointToVertex2);
@@ -135,15 +135,15 @@ s32 point_is_in_quad(Vec3f point, struct QuadInfo *quad) {
     Vec3f cross1, cross2, cross3, cross4;
     f32 dot1, dot2, dot3, dot4;
 
-    vec3f_sub2(edge1, quad->vertices[1], quad->vertices[0]);
-    vec3f_sub2(edge2, quad->vertices[2], quad->vertices[1]);
-    vec3f_sub2(edge3, quad->vertices[3], quad->vertices[2]);
-    vec3f_sub2(edge4, quad->vertices[0], quad->vertices[3]);
+    vec3f_diff(edge1, quad->vertices[1], quad->vertices[0]);
+    vec3f_diff(edge2, quad->vertices[2], quad->vertices[1]);
+    vec3f_diff(edge3, quad->vertices[3], quad->vertices[2]);
+    vec3f_diff(edge4, quad->vertices[0], quad->vertices[3]);
 
-    vec3f_sub2(pointToVertex1, point, quad->vertices[0]);
-    vec3f_sub2(pointToVertex2, point, quad->vertices[1]);
-    vec3f_sub2(pointToVertex3, point, quad->vertices[2]);
-    vec3f_sub2(pointToVertex4, point, quad->vertices[3]);
+    vec3f_diff(pointToVertex1, point, quad->vertices[0]);
+    vec3f_diff(pointToVertex2, point, quad->vertices[1]);
+    vec3f_diff(pointToVertex3, point, quad->vertices[2]);
+    vec3f_diff(pointToVertex4, point, quad->vertices[3]);
 
     vec3f_cross(cross1, edge1, pointToVertex1);
     vec3f_cross(cross2, edge2, pointToVertex2);
@@ -162,10 +162,10 @@ s32 point_is_in_quad(Vec3f point, struct QuadInfo *quad) {
 s32 edge_intersects_plane(Vec3f intersectionPoint, Vec3f edgePoint1, Vec3f edgePoint2, Vec3f planePoint, Vec3f planeNormal) {
     Vec3f lineDir, relPlane;
     // Find the point of intersection.
-    vec3f_sub2(lineDir, edgePoint2, edgePoint1);
+    vec3f_diff(lineDir, edgePoint2, edgePoint1);
     f32 dot = vec3f_dot(planeNormal, lineDir);
     if (absf(dot) < 0.1f) return FALSE;
-    vec3f_sub2(relPlane, planePoint, edgePoint1);
+    vec3f_diff(relPlane, planePoint, edgePoint1);
     dot = vec3f_dot(planeNormal, relPlane) / dot;
     if (dot < 0.f || dot > 1.f) return FALSE;
     vec3f_scale(intersectionPoint, lineDir, dot);
@@ -201,14 +201,14 @@ void vertices_vs_quad_face(Vec3f vertices[], u32 numVertices, struct QuadInfo *q
 void edges_vs_edge(Vec3f vertices[], MeshEdge edges[], u32 numEdges, Vec3f edgePoint1, Vec3f edgePoint2, Vec3f edgeNormal, struct Collision *col) {
     Vec3f temp, edge, closestPointOnEdge, planeNormal, intersectionPoint;
     
-    vec3f_sub2(edge, edgePoint2, edgePoint1);
+    vec3f_diff(edge, edgePoint2, edgePoint1);
     vec3f_cross(planeNormal, edgeNormal, edge);
     vec3f_normalize(planeNormal);
     increment_debug_counter(&pNumEdgeChecks, numEdges);
     for (u32 i = 0; i < numEdges; i++) {
         if (edge_intersects_plane(intersectionPoint, vertices[edges[i][0]], vertices[edges[i][1]], edgePoint1, planeNormal)) {
             // Find distance from intersection point to edge
-            vec3f_sub2(temp, edgePoint1, intersectionPoint);
+            vec3f_diff(temp, edgePoint1, intersectionPoint);
             f32 distance = vec3f_dot(temp, edgeNormal);
             if (distance <= PENETRATION_MIN_DEPTH || distance >= PENETRATION_MAX_DEPTH) continue;
 
@@ -217,7 +217,7 @@ void edges_vs_edge(Vec3f vertices[], MeshEdge edges[], u32 numEdges, Vec3f edgeP
             vec3f_add(closestPointOnEdge, intersectionPoint);
 
             // Check that closest point is on line segment
-            vec3f_sub2(temp, closestPointOnEdge, edgePoint1);
+            vec3f_diff(temp, closestPointOnEdge, edgePoint1);
             f32 dot = vec3f_dot(temp, edge);
             if (dot < 0.f || dot > vec3f_dot(edge, edge)) continue;
 
@@ -230,7 +230,7 @@ void tris_vs_vertex(struct TriangleInfo tris[], u32 numTris, Vec3f point, Vec3f 
     increment_debug_counter(&pNumFaceChecks, numTris);
     for (u32 i = 0; i < numTris; i++) {
         Vec3f edge1;
-        vec3f_sub2(edge1, point, tris[i].vertices[0]);
+        vec3f_diff(edge1, point, tris[i].vertices[0]);
         f32 distance = vec3f_dot(tris[i].normal, vertexNormal);
         if (distance == 0.f) continue;
         distance = vec3f_dot(tris[i].normal, edge1) / distance;
@@ -249,7 +249,7 @@ void quads_vs_vertex(struct QuadInfo quads[], u32 numQuads, Vec3f point, Vec3f v
     increment_debug_counter(&pNumFaceChecks, numQuads);
     for (u32 i = 0; i < numQuads; i++) {
         Vec3f edge1;
-        vec3f_sub2(edge1, point, quads[i].vertices[0]);
+        vec3f_diff(edge1, point, quads[i].vertices[0]);
         f32 distance = vec3f_dot(quads[i].normal, vertexNormal);
         if (distance == 0.f) continue;
         distance = vec3f_dot(quads[i].normal, edge1) / distance;
@@ -296,8 +296,8 @@ void calculate_mesh(struct RigidBody *body, Vec3f vertices[], struct TriangleInf
         vec3f_copy(tris[i].vertices[1], vertices[body->mesh->tris[i][1]]);
         vec3f_copy(tris[i].vertices[2], vertices[body->mesh->tris[i][2]]);
 
-        vec3f_sub2(edge1, tris[i].vertices[1], tris[i].vertices[0]);
-        vec3f_sub2(edge2, tris[i].vertices[2], tris[i].vertices[0]);
+        vec3f_diff(edge1, tris[i].vertices[1], tris[i].vertices[0]);
+        vec3f_diff(edge2, tris[i].vertices[2], tris[i].vertices[0]);
         vec3f_cross(tris[i].normal, edge1, edge2);
         vec3f_normalize(tris[i].normal);
     }
@@ -308,8 +308,8 @@ void calculate_mesh(struct RigidBody *body, Vec3f vertices[], struct TriangleInf
         vec3f_copy(quads[i].vertices[2], vertices[body->mesh->quads[i][2]]);
         vec3f_copy(quads[i].vertices[3], vertices[body->mesh->quads[i][3]]);
 
-        vec3f_sub2(edge1, quads[i].vertices[1], quads[i].vertices[0]);
-        vec3f_sub2(edge2, quads[i].vertices[2], quads[i].vertices[0]);
+        vec3f_diff(edge1, quads[i].vertices[1], quads[i].vertices[0]);
+        vec3f_diff(edge2, quads[i].vertices[2], quads[i].vertices[0]);
         vec3f_cross(quads[i].normal, edge1, edge2);
         vec3f_normalize(quads[i].normal);
     }

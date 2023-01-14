@@ -119,13 +119,13 @@ void rigid_body_collision_impulse(struct RigidBody *body1, struct RigidBody *bod
 
     // Determine the relative velocity (dv) of the two bodies at the point of impact.
     Vec3f r0, r1, v0, v1, dv;
-    vec3f_sub2(r0, hitPoint, body1->centerOfMass);
+    vec3f_diff(r0, hitPoint, body1->centerOfMass);
     vec3f_cross(v0, r0, body1->angularVel);
     vec3f_add(v0, body1->linearVel);
     vec3f_copy(dv, v0);
 
     if (doSecondBody) {
-        vec3f_sub2(r1, hitPoint, body2->centerOfMass);
+        vec3f_diff(r1, hitPoint, body2->centerOfMass);
         vec3f_cross(v1, r1, body2->angularVel);
         vec3f_add(v1, body2->linearVel);
         vec3f_sub(dv, v1);
@@ -239,9 +239,9 @@ void rigid_body_update_matrix(struct RigidBody *body) {
     body->invInertia[1][1] = iy;
     body->invInertia[2][2] = iz;
 
-    //Mat4 tmp;
-   // mtxf_mul(tmp, body->transform, body->invInertia);
-    //mtxf_mul_transpose(body->invInertia, tmp, body->transform);
+    Mat4 tmp;
+    mtxf_mul(tmp, body->transform, body->invInertia);
+    mtxf_mul_transpose(body->invInertia, tmp, body->transform);
 
     vec3f_copy(body->transform[3], body->centerOfMass);
 }
@@ -388,6 +388,10 @@ void rigid_body_update_position_from_velocity(struct RigidBody *body) {
 }
 
 void rigid_body_update_position_from_collisions(struct RigidBody *body) {
+    if (body->isStatic || body->asleep) {
+        return;
+    }
+
     rigid_body_apply_displacement(body, body->linearDisplacement, body->angularDisplacement);
     vec3f_set(body->linearDisplacement, 0.f, 0.f, 0.f);
     vec3f_set(body->angularDisplacement, 0.f, 0.f, 0.f);
@@ -399,11 +403,11 @@ void rigid_body_update_position_from_collisions(struct RigidBody *body) {
         vec3f_set(body->linearVel, 0.0f, 0.0f, 0.0f);
         vec3f_set(body->angularVel, 0.0f, 0.0f, 0.0f);
     }
+}
 
+void rigid_body_update_obj(struct RigidBody *body) {
     if (body->obj != NULL) {
-        Mat4 transformMtx;
-        mtxf_translate(transformMtx, body->obj->rigidBodyOffset);
-        mtxf_mul(body->obj->transform, transformMtx, body->transform);
+        mtxf_copy(body->obj->transform, body->transform);
         vec3f_copy(&body->obj->oPosVec, body->obj->transform[3]);
         body->obj->header.gfx.throwMatrix = &body->obj->transform;
     }
@@ -528,6 +532,7 @@ void do_rigid_body_step(void) {
     for (u32 i = 0; i < MAX_RIGID_BODIES; i++) {
         if (gRigidBodies[i].allocated) {
             rigid_body_update_position_from_collisions(&gRigidBodies[i]);
+            rigid_body_update_obj(&gRigidBodies[i]);
         }
     }
 }

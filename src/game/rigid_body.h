@@ -58,12 +58,6 @@ void increment_debug_counter(u32 *counter, s32 amount);
     dest[2] = src[2] * scale; \
 }
 
-#define vec3f_sub2(dest, a, b) { \
-    dest[0] = a[0] - b[0]; \
-    dest[1] = a[1] - b[1]; \
-    dest[2] = a[2] - b[2]; \
-}
-
 
 // Controls an instance of a rigid body
 struct RigidBody {
