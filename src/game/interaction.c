@@ -204,6 +204,8 @@ u32 determine_interaction(struct MarioState *m, struct Object *obj) {
             interaction = INT_SLIDE_KICK;
         } else if (action & ACT_FLAG_RIDING_SHELL) {
             interaction = INT_FAST_ATTACK_OR_SHELL;
+        } else if (action == ACT_SLIDE_ATTACK) {
+            interaction = INT_KICK;
         } else if (m->forwardVel <= -26.0f || 26.0f <= m->forwardVel) {
             interaction = INT_FAST_ATTACK_OR_SHELL;
         }
@@ -639,6 +641,11 @@ void bounce_back_from_attack(struct MarioState *m, u32 interaction) {
     if (interaction & (INT_PUNCH | INT_KICK | INT_TRIP)) {
         if (m->action == ACT_PUNCHING) {
             m->action = ACT_MOVE_PUNCHING;
+        }
+
+        if (m->action == ACT_SLIDE_ATTACK) {
+            play_sound(SOUND_ACTION_HIT_2, m->marioObj->header.gfx.cameraToObject);
+            return;
         }
 
         if (m->action & ACT_FLAG_AIR) {

@@ -888,6 +888,8 @@ void geo_process_shadow(struct GraphNodeShadow *node) {
         s8 shifted = (gCurrAnimEnabled
                       && (gCurrAnimType == ANIM_TYPE_TRANSLATION
                        || gCurrAnimType == ANIM_TYPE_LATERAL_TRANSLATION)
+                    && (gCurGraphNodeObject->animInfo.animID != MARIO_ANIM_SLIDE_ATTACK_START)
+                    && (gCurGraphNodeObject->animInfo.animID != MARIO_ANIM_SLIDE_ATTACK_END)
         );
 
         if (shifted) {

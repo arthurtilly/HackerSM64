@@ -1905,6 +1905,12 @@ s32 act_top_of_pole_jump(struct MarioState *m) {
     return FALSE;
 }
 
+s32 act_slide_attack_jump(struct MarioState *m) {
+    play_mario_jump_sound(m);
+    common_air_action_step(m, ACT_FREEFALL_LAND, MARIO_ANIM_HANDSTAND_JUMP, AIR_STEP_CHECK_LEDGE_GRAB);
+    return FALSE;
+}
+
 s32 act_vertical_wind(struct MarioState *m) {
     s16 intendedDYaw = m->intendedYaw - m->faceAngle[1];
     f32 intendedMag = m->intendedMag / 32.0f;
@@ -2057,6 +2063,7 @@ s32 mario_execute_airborne_action(struct MarioState *m) {
         case ACT_FLYING:               cancel = act_flying(m);               break;
         case ACT_RIDING_HOOT:          cancel = act_riding_hoot(m);          break;
         case ACT_TOP_OF_POLE_JUMP:     cancel = act_top_of_pole_jump(m);     break;
+        case ACT_SLIDE_ATTACK_JUMP:    cancel = act_slide_attack_jump(m);    break;
         case ACT_VERTICAL_WIND:        cancel = act_vertical_wind(m);        break;
     }
     /* clang-format on */

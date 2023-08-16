@@ -246,7 +246,7 @@ void play_sound_if_no_flag(struct MarioState *m, u32 soundBits, u32 flags) {
  */
 void play_mario_jump_sound(struct MarioState *m) {
     if (!(m->flags & MARIO_MARIO_SOUND_PLAYED)) {
-        if (m->action == ACT_TRIPLE_JUMP) {
+        if (m->action == ACT_TRIPLE_JUMP || m->action == ACT_SLIDE_ATTACK_JUMP) {
             play_sound(SOUND_MARIO_YAHOO_WAHA_YIPPEE + ((gAudioRandom % 5) << 16),
                        m->marioObj->header.gfx.cameraToObject);
         } else {
@@ -791,6 +791,11 @@ u32 set_mario_action_airborne(struct MarioState *m, u32 action, u32 actionArg) {
             if (m->forwardVel < 24.0f) {
                 m->forwardVel = 24.0f;
             }
+            m->wallKickTimer = 0;
+            break;
+
+        case ACT_SLIDE_ATTACK_JUMP:
+            set_mario_y_vel_based_on_fspeed(m, 42.0f, 0.4f);
             m->wallKickTimer = 0;
             break;
 
@@ -1648,6 +1653,13 @@ void mario_update_hitbox_and_cap_model(struct MarioState *m) {
         m->marioObj->hitboxHeight = 100.0f;
     } else {
         m->marioObj->hitboxHeight = 160.0f;
+    }
+
+    // Big hitbox for slide attack
+    if (m->action == ACT_SLIDE_ATTACK) {
+        m->marioObj->hitboxRadius = 60.f;
+    } else {
+        m->marioObj->hitboxRadius = 37.f;
     }
 
     if ((m->flags & MARIO_TELEPORTING) && (m->fadeWarpOpacity != MODEL_STATE_MASK)) {
