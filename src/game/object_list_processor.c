@@ -448,6 +448,9 @@ void unload_objects_from_area(UNUSED s32 unused, s32 areaIndex) {
     }
 }
 
+struct LadderEntry gLadders[50];
+u8 gNumLadders = 0;
+
 /**
  * Spawn objects given a list of SpawnInfos. Called when loading an area.
  */
@@ -467,6 +470,17 @@ void spawn_objects_from_info(UNUSED s32 unused, struct SpawnInfo *spawnInfo) {
     while (spawnInfo != NULL) {
         struct Object *object;
         const BehaviorScript *script;
+
+        if (spawnInfo->behaviorScript == bhvLadder) {
+            gLadders[gNumLadders].pos[0] = spawnInfo->startPos[0] - 40.f*sins(spawnInfo->startAngle[1]);
+            gLadders[gNumLadders].pos[1] = spawnInfo->startPos[1];
+            gLadders[gNumLadders].pos[2] = spawnInfo->startPos[2] - 40.f*coss(spawnInfo->startAngle[1]);
+            gLadders[gNumLadders].yaw = spawnInfo->startAngle[1];
+            gLadders[gNumLadders].height = spawnInfo->behaviorArg >> 16;
+            gNumLadders++;
+            spawnInfo = spawnInfo->next;
+            continue;
+        }
 
         script = segmented_to_virtual(spawnInfo->behaviorScript);
 

@@ -96,6 +96,15 @@ extern s32 gSurfacesAllocated;
 extern s32 gNumStaticSurfaceNodes;
 extern s32 gNumStaticSurfaces;
 
+struct LadderEntry {
+    Vec3s pos;
+    s16 yaw;
+    u16 height;
+};
+
+extern struct LadderEntry gLadders[];
+extern u8 gNumLadders;
+
 #define OBJECT_MEMORY_POOL 0x800
 
 extern struct MemoryPool *gObjectMemoryPool;

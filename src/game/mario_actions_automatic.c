@@ -16,6 +16,7 @@
 #include "camera.h"
 #include "level_table.h"
 #include "rumble_init.h"
+#include "object_list_processor.h"
 
 #include "config.h"
 
@@ -251,6 +252,109 @@ s32 act_top_of_pole(struct MarioState *m) {
     set_pole_position(m, return_mario_anim_y_translation(m));
     return FALSE;
 }
+
+s8 gMarioCurLadder = -1;
+
+s32 set_ladder_position(struct MarioState *m, f32 offsetY) {
+    struct Surface *floor;
+    struct Surface *ceil;
+    s32 result = POLE_NONE;
+    f32 poleTop = gLadders[gMarioCurLadder].height - 100.f;
+    struct Object *marioObj = m->marioObj;
+
+    if (marioObj->oMarioPolePos > poleTop) {
+        m->pos[0] = gLadders[gMarioCurLadder].pos[0] + 50.f * sins(gLadders[gMarioCurLadder].yaw);
+        m->pos[2] = gLadders[gMarioCurLadder].pos[2] + 50.f * coss(gLadders[gMarioCurLadder].yaw);
+        m->pos[1] = gLadders[gMarioCurLadder].pos[1] + gLadders[gMarioCurLadder].height;
+        m->input &= ~INPUT_OFF_FLOOR;
+        m->floorHeight = find_floor(m->pos[0], m->pos[1], m->pos[2], &m->floor);
+        set_mario_action(m, ACT_LEDGE_CLIMB_FAST, 0);
+        return POLE_FELL_OFF;
+    }
+
+    m->pos[0] = gLadders[gMarioCurLadder].pos[0];
+    m->pos[1] = gLadders[gMarioCurLadder].pos[1] + marioObj->oMarioPolePos + offsetY;
+    m->pos[2] = gLadders[gMarioCurLadder].pos[2];
+
+    f32 ceilHeight = find_mario_ceil(m->pos, m->pos[1], &ceil);
+    if (m->pos[1] > ceilHeight - 160.0f) {
+        m->pos[1] = ceilHeight - 160.0f;
+        marioObj->oMarioPolePos = m->pos[1] - gLadders[gMarioCurLadder].pos[1];
+    }
+
+    f32 floorHeight = find_floor(m->pos[0], m->pos[1], m->pos[2], &floor);
+    if (m->pos[1] < floorHeight) {
+        m->pos[1] = floorHeight;
+        set_mario_action(m, ACT_IDLE, 0);
+        result = POLE_TOUCHED_FLOOR;
+    } else if (marioObj->oMarioPolePos < 0) {
+        m->pos[1] = gLadders[gMarioCurLadder].pos[1];
+        set_mario_action(m, ACT_FREEFALL, 0);
+        result = POLE_FELL_OFF;
+    }
+
+    vec3f_copy(marioObj->header.gfx.pos, m->pos);
+    vec3s_set(marioObj->header.gfx.angle, 0, m->faceAngle[1], 0);
+
+    return result;
+}
+
+s32 check_ladders(struct MarioState *m) {
+    s32 i;
+    for (i = 0; i < gNumLadders; i++) {
+        struct LadderEntry* ladder = &gLadders[i];
+        if (m->pos[1] > (ladder->pos[1] - 5.f) && m->pos[1] < (ladder->pos[1] + ladder->height - 100) &&
+            ABS((s16)(m->faceAngle[1] - ladder->yaw)) < 0x2000) {
+            f32 distX = m->pos[0] - ladder->pos[0];
+            f32 distZ = m->pos[2] - ladder->pos[2];
+            if (distX * distX + distZ * distZ < 10000.0f) {
+                mario_stop_riding_and_holding(m);
+
+                m->vel[1] = 0.0f;
+                m->forwardVel = 0.0f;
+
+                // Pole fix
+                // If mario is beneath the pole, clamp mario's position to the down-offset of the pole (bottom)
+                m->marioObj->oMarioPolePos = ((m->pos[1] - ladder->pos[1]) < 0) ? 0 : (m->pos[1] - ladder->pos[1]);
+                gMarioCurLadder = i;
+                return set_mario_action(m, ACT_CLIMB_LADDER, 0);
+            }
+        }
+    }
+    return FALSE;
+}
+
+s32 act_climb_ladder(struct MarioState *m) {
+    struct Object *marioObj = m->marioObj;
+
+    if (m->health < 0x100) {
+        m->forwardVel = -2.0f;
+        return set_mario_action(m, ACT_SOFT_BONK, 0);
+    }
+
+    if (m->input & INPUT_A_PRESSED) {
+        m->faceAngle[1] += 0x8000;
+        return set_mario_action(m, ACT_WALL_KICK_AIR, 0);
+    }
+
+    f32 ladderMag = m->intendedMag * coss(gLadders[gMarioCurLadder].yaw - m->intendedYaw) / 2.5f;
+
+    marioObj->oMarioPolePos += ladderMag;
+    m->angleVel[1] = 0;
+    m->faceAngle[1] = gLadders[gMarioCurLadder].yaw;
+
+    if (set_ladder_position(m, 0.0f) == POLE_NONE) {
+        s32 animSpeed = ladderMag * 0x2000+1;
+        set_mario_anim_with_accel(m, MARIO_ANIM_CLIMB_LADDER, animSpeed);
+
+        if (marioObj->header.gfx.animInfo.animFrame % 20 == 0) {
+            play_sound(SOUND_ACTION_TERRAIN_STEP + (SOUND_TERRAIN_STONE << 16), m->marioObj->header.gfx.cameraToObject);
+        }
+    }
+
+    return FALSE;
+}
+
 
 s32 perform_hanging_step(struct MarioState *m, Vec3f nextPos) {
     struct Surface *ceil, *floor;
@@ -657,7 +761,9 @@ s32 act_ledge_climb_fast(struct MarioState *m) {
         return let_go_of_ledge(m);
     }
 
-    play_sound_if_no_flag(m, SOUND_MARIO_UH_LEDGE_CLIMB_FAST, MARIO_MARIO_SOUND_PLAYED);
+    if (m->prevAction != ACT_CLIMB_LADDER) {
+        play_sound_if_no_flag(m, SOUND_MARIO_UH_LEDGE_CLIMB_FAST, MARIO_MARIO_SOUND_PLAYED);
+    }
 
     update_ledge_climb(m, MARIO_ANIM_FAST_LEDGE_GRAB, ACT_IDLE);
 
@@ -872,6 +978,7 @@ s32 mario_execute_automatic_action(struct MarioState *m) {
         case ACT_CLIMBING_POLE:          cancel = act_climbing_pole(m);          break;
         case ACT_TOP_OF_POLE_TRANSITION: cancel = act_top_of_pole_transition(m); break;
         case ACT_TOP_OF_POLE:            cancel = act_top_of_pole(m);            break;
+        case ACT_CLIMB_LADDER:           cancel = act_climb_ladder(m);           break;
         case ACT_START_HANGING:          cancel = act_start_hanging(m);          break;
         case ACT_HANGING:                cancel = act_hanging(m);                break;
         case ACT_HANG_MOVING:            cancel = act_hang_moving(m);            break;

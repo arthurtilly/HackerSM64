@@ -3853,6 +3853,11 @@ const BehaviorScript bhvHoot[] = {
     END_LOOP(),
 };
 
+const BehaviorScript bhvLadder[] = {
+    BEGIN(OBJ_LIST_DEFAULT),
+    BREAK(),
+};
+
 const BehaviorScript bhvBetaHoldableObject[] = {
     BEGIN(OBJ_LIST_GENACTOR),
     OR_INT(oFlags, (OBJ_FLAG_HOLDABLE | OBJ_FLAG_UPDATE_GFX_POS_AND_ANGLE)),

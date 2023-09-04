@@ -846,6 +846,9 @@ s32 geo_update_animation_frame(struct AnimInfo *obj, s32 *accelAssist) {
                 SET_HIGH_S16_OF_32(result, anim->loopStart);
             }
         }
+        if (GET_HIGH_S16_OF_32(result) < anim->loopStart) {
+            SET_HIGH_S16_OF_32(result, anim->loopEnd - 1);
+        }
     }
 
     if (accelAssist != 0) {

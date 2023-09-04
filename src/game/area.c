@@ -239,6 +239,7 @@ void load_area(s32 index) {
         }
 
         if (gCurrentArea->objectSpawnInfos != NULL) {
+            gNumLadders = 0;
             spawn_objects_from_info(0, gCurrentArea->objectSpawnInfos);
         }
 

@@ -1815,6 +1815,8 @@ void check_kick_or_punch_wall(struct MarioState *m) {
     }
 }
 
+extern s32 check_ladders(struct MarioState *m);
+
 void mario_process_interactions(struct MarioState *m) {
     sDelayInvincTimer = FALSE;
     sInvulnerable = (m->action & ACT_FLAG_INVULNERABLE) || m->invincTimer != 0;
@@ -1834,6 +1836,13 @@ void mario_process_interactions(struct MarioState *m) {
                     }
                 }
             }
+        }
+    }
+
+    s32 actionId = m->action & ACT_ID_MASK;
+    if (actionId >= ACT_GROUP_MOVING && actionId < (ACT_HOLD_JUMP & ACT_ID_MASK)) {
+        if (!(m->prevAction == ACT_CLIMB_LADDER)) {
+            check_ladders(m);
         }
     }
 
