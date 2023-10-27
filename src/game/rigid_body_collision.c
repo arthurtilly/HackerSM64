@@ -221,6 +221,11 @@ void edges_vs_edge(Vec3f vertices[], MeshEdge edges[], u32 numEdges, Vec3f edgeP
             f32 dot = vec3f_dot(temp, edge);
             if (dot < 0.f || dot > vec3f_dot(edge, edge)) continue;
 
+            // If angle is more than 45 degrees, skip
+            Vec3f meshedge;
+            vec3f_diff(meshedge, vertices[edges[i][1]], vertices[edges[i][0]]);
+            f32 cosAngle = vec3f_dot(meshedge, edgeNormal) / vec3_mag(meshedge);
+            if (ABS(cosAngle) > 0.707f) continue;
             add_collision(col, intersectionPoint, edgeNormal, distance);
         }
     }
