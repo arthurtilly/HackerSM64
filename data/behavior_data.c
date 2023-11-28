@@ -3782,7 +3782,7 @@ const BehaviorScript bhvMessagePanel[] = {
     SET_FLOAT(oCollisionDistance, 150),
     SET_INTERACT_TYPE(INTERACT_TEXT),
     SET_INT(oInteractionSubtype, INT_SUBTYPE_SIGN),
-    DROP_TO_FLOOR(),
+    //DROP_TO_FLOOR(),
     SET_HITBOX_WITH_OFFSET(/*Radius*/ 150, /*Height*/ 80, /*Downwards offset*/ 63),
     CALL_NATIVE(bhv_message_panel_init),
     BEGIN_LOOP(),

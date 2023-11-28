@@ -220,9 +220,17 @@ void rigid_body_collision_impulse(struct RigidBody *body1, struct RigidBody *bod
 
     vec3f_add(body1->linearVel, body1Linear);
 
+    u32 applyToFirstBody = TRUE;
+    if (doSecondBody) {
+        // If second body is higher, apply to second
+        if (body2->centerOfMass[1] > body1->centerOfMass[1]) {
+            applyToFirstBody = FALSE;
+        }
+    }
+
     Vec3f linearDisp;
     vec3f_scale(linearDisp, normal, penetration);
-    compound_displacement(body1->linearDisplacement, linearDisp, &body1->displacementMagnitude);
+    if (applyToFirstBody) compound_displacement(body1->linearDisplacement, linearDisp, &body1->displacementMagnitude);
     //vec3f_add(body1->linearDisplacement, body1Linear);
     vec3f_add(body1->angularVel, body1Angular);
     //vec3f_add(body1->angularDisplacement, body1Angular);
@@ -230,7 +238,7 @@ void rigid_body_collision_impulse(struct RigidBody *body1, struct RigidBody *bod
     if (doSecondBody) {
         vec3f_add(body2->linearVel, body2Linear);
         vec3f_scale(linearDisp, normal, -penetration);
-        compound_displacement(body2->linearDisplacement, linearDisp, &body2->displacementMagnitude);
+        if (!applyToFirstBody) compound_displacement(body2->linearDisplacement, linearDisp, &body2->displacementMagnitude);
         //vec3f_add(body2->linearDisplacement, body2Linear);
         vec3f_add(body2->angularVel, body2Angular);
         //vec3f_add(body2->angularDisplacement, body2Angular);
@@ -351,6 +359,7 @@ void rigid_body_add_force(struct RigidBody *body, Vec3f contactPoint, Vec3f forc
 
     if (wake) {
         body->asleep = FALSE;
+        body->motion = 10.f;
     }
 }
 
@@ -451,7 +460,7 @@ void rigid_body_apply_buoyancy(struct RigidBody *body) {
                 if (buoyancyPointWorld[1] < waterLevel) {
                     Vec3f buoyancyForce;
                     vec3f_set(buoyancyForce, 0.f, -GRAVITY_FORCE * body->mass / 7.f, 0.f);
-                    rigid_body_add_force(body, buoyancyPointWorld, buoyancyForce, FALSE);
+                    rigid_body_add_force(body, buoyancyPointWorld, buoyancyForce, TRUE);
                     body->linearVel[0] *= 0.99f;
                     body->linearVel[1] *= 0.999f; // dampened less
                     body->linearVel[2] *= 0.99f;
@@ -512,7 +521,6 @@ void apply_impulses(void) {
 
 /// Perform one step for the rigid body physics system.
 void do_rigid_body_step(void) {
-    gNumCollisions = 0;
     
     if (gPlayer1Controller->buttonPressed & D_JPAD) {
         for (u32 i = 0; i < 1; i++) {
@@ -532,9 +540,26 @@ void do_rigid_body_step(void) {
         }
     }
 
+    // COLLISION - BODY ON BODY
+    gNumCollisions = 0;
     // Check collisions
     for (u32 i = 0; i < MAX_RIGID_BODIES; i++) {
-        rigid_body_do_collision(i);
+        rigid_body_do_body_collision(i);
+    }
+
+    apply_impulses();
+
+    // Update position
+    for (u32 i = 0; i < MAX_RIGID_BODIES; i++) {
+        if (gRigidBodies[i].allocated) {
+            rigid_body_update_position_from_collisions(&gRigidBodies[i]);
+        }
+    }
+
+    // COLLISION - BODY ON SURF
+    gNumCollisions = 0;
+    for (u32 i = 0; i < MAX_RIGID_BODIES; i++) {
+        rigid_body_do_surf_collision(i);
     }
 
     apply_impulses();

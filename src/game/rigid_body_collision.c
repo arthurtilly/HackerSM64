@@ -409,9 +409,7 @@ void rigid_body_check_surf_collisions(struct RigidBody *body) {
 
 /// Checks for collisions between two rigid bodies.
 void rigid_body_check_body_collisions(struct RigidBody *body1, struct RigidBody *body2) {
-    u32 body1CantMove = (body1->isStatic || body1->asleep);
-    u32 body2CantMove = (body2->isStatic || body2->asleep);
-    if (body1CantMove && body2CantMove) {
+    if ((body1->isStatic || body1->asleep) && (body2->isStatic || body2->asleep)) {
         return;
     }
 
@@ -428,26 +426,19 @@ void rigid_body_check_body_collisions(struct RigidBody *body1, struct RigidBody 
             vertices_vs_tri_face(sCurrentVertices, body1->mesh->numVertices, &sCurrentTris2[i], col);
         }
     }
-    // Body 1 verts vs body 2 quads
+    // Body 1 verts and edges vs body 2 quads
     if (body2->mesh->numQuads > 0) {
         for (u32 i = 0; i < body2->mesh->numQuads; i++) {
-            // Check for collisions
+            // Check for vertex collisions
             vertices_vs_quad_face(sCurrentVertices, body1->mesh->numVertices, &sCurrentQuads2[i], col);
+        
+            // Check for edge collisions
+            for (u32 j = 0; j < 4; j++) {
+                edges_vs_edge(sCurrentVertices, body1->mesh->edges, body1->mesh->numEdges,
+                    sCurrentVertices2[body2->mesh->quads[i][j]], sCurrentVertices2[body2->mesh->quads[i][j == 3 ? 0 : j + 1]],
+                    sCurrentQuads2[i].normal, col);
+            }
         }
-    }
-
-    // Body 1 edges vs body 2 edges
-    for (u32 i = 0; i < body2->mesh->numEdges; i++) {
-        // Check for collisions
-        Vec3f normal;
-        vec3f_copy(normal, sCurrentVertices2[body2->mesh->edges[i][0]]);
-        vec3f_add(normal, sCurrentVertices2[body2->mesh->edges[i][1]]);
-        vec3f_scale(normal, normal, 0.5f);
-        vec3f_sub(normal, body2->centerOfMass);
-        vec3f_normalize(normal);
-        edges_vs_edge(sCurrentVertices, body1->mesh->edges, body1->mesh->numEdges,
-            sCurrentVertices2[body2->mesh->edges[i][0]], sCurrentVertices2[body2->mesh->edges[i][1]],
-            normal, col);
     }
 
     sReverseContactPoint = TRUE;
@@ -469,18 +460,25 @@ void rigid_body_check_body_collisions(struct RigidBody *body1, struct RigidBody 
     sReverseContactPoint = FALSE;
 }
 
-void rigid_body_do_collision(u32 bodyIndex) {
+void rigid_body_do_surf_collision(u32 bodyIndex) {
+    struct RigidBody *body = &gRigidBodies[bodyIndex];
+    if (!body->allocated) return;
+    if (body->isStatic || body->asleep) return;
+
+    calculate_mesh(body, sCurrentVertices, sCurrentTris, sCurrentQuads);
+    rigid_body_check_surf_collisions(body);
+}
+
+void rigid_body_do_body_collision(u32 bodyIndex) {
     struct RigidBody *body = &gRigidBodies[bodyIndex];
     if (!body->allocated) return;
 
     calculate_mesh(body, sCurrentVertices, sCurrentTris, sCurrentQuads);
-
     for (u32 j = bodyIndex + 1; j < MAX_RIGID_BODIES; j++) {
         if (gRigidBodies[j].allocated) {
             rigid_body_check_body_collisions(body, &gRigidBodies[j]);
         }
     }
-    rigid_body_check_surf_collisions(body);
 }
 
 static const Vtx vertex_collision_point[] = {

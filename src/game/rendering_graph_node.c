@@ -376,7 +376,7 @@ void geo_process_master_list_sub(struct GraphNodeMasterList *node) {
     if ( hitboxView) render_debug_boxes(DEBUG_UCODE_DEFAULT | DEBUG_BOX_CLEAR);
     if (surfaceView) visual_surface_loop();
 #endif
-    render_collision_points();
+    //render_collision_points();
 }
 
 /**
