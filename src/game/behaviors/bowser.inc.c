@@ -102,9 +102,9 @@ void bhv_bowser_flame_spawn_loop(void) {
             cur_obj_play_sound_1(SOUND_AIR_BOWSER_SPIT_FIRE);
             posX = data[5 * animFrame];
             posZ = data[5 * animFrame + 2];
-            o->oPosX = bowser->oPosX + (posZ * sinsYaw + posX * cossYaw);
-            o->oPosY = bowser->oPosY + data[5 * animFrame + 1];
-            o->oPosZ = bowser->oPosZ + (posZ * cossYaw - posX * sinsYaw);
+            obj_inherit_gravity_frame(o, bowser);
+            obj_offset_local(bowser, &o->oPosVec, &bowser->oPosVec, posZ * sinsYaw + posX * cossYaw,
+                             data[5 * animFrame + 1], posZ * cossYaw - posX * sinsYaw);
             o->oMoveAnglePitch = data[5 * animFrame + 4] + 0xC00;
             o->oMoveAngleYaw = data[5 * animFrame + 3] + (s16) bowser->oMoveAngleYaw;
             // Spawns the flames on a non-odd animFrame value
@@ -155,7 +155,7 @@ void bhv_bowser_body_anchor_loop(void) {
 s32 bowser_spawn_shockwave(void) {
     if (o->oBehParams2ndByte == BOWSER_BP_BITS) {
         struct Object *wave = spawn_object(o, MODEL_BOWSER_WAVE, bhvBowserShockWave);
-        wave->oPosY = o->oFloorHeight;
+        obj_set_height(o, &wave->oPosVec, o->oFloorHeight);
         return TRUE;
     }
     return FALSE;
@@ -421,9 +421,9 @@ void bowser_bits_actions(void) {
  * Reset Bowser position and speed if he wasn't able to land properly on stage
  */
 void bowser_reset_fallen_off_stage(void) {
-    if (o->oVelY < 0.0f && o->oPosY < (o->oHomeY - 300.0f)) {
-        o->oPosX = o->oPosZ = 0.0f;
-        o->oPosY = o->oHomeY + 2000.0f;
+    if (o->oVelY < 0.0f && obj_height_difference(o, &o->oPosVec, &o->oHomeVec) < -300.0f) {
+        Vec3f center = { 0.0f, o->oHomeY, 0.0f };
+        obj_offset_up(o, &o->oPosVec, center, 2000.0f);
         o->oVelY = 0.0f;
         o->oForwardVel = 0.0f;
     }
@@ -976,7 +976,7 @@ void bowser_set_goal_invisible(void) {
     if (o->oOpacity == 0) {
         o->oForwardVel = 0.0f;
         o->oVelY = 0.0f;
-        o->oPosY = (o->oHomeY - 1000.0f);
+        obj_set_height(o, &o->oPosVec, obj_height(o, &o->oHomeVec) - 1000.0f);
     }
 }
 
@@ -1022,10 +1022,10 @@ void bowser_act_jump_onto_stage(void) {
 
         // Approach him back on stage
         case BOWSER_SUB_ACT_JUMP_ON_STAGE_LAND:
-            if (o->oPosY > o->oHomeY) {
+            if (obj_height(o, &o->oPosVec) > obj_height(o, &o->oHomeVec)) {
                 o->oDragStrength = 0.0f;
                 if (o->oBowserDistToCenter < 2500.0f) {
-                    if (absf(o->oFloorHeight - o->oHomeY) < 100.0f) {
+                    if (absf(o->oFloorHeight - obj_height(o, &o->oHomeVec)) < 100.0f) {
                         approach_f32_signed(&o->oForwardVel, 0, -5.0f);
                     } else {
                         cur_obj_forward_vel_approach_upward(150.0f, 2.0f);
@@ -1142,7 +1142,7 @@ s32 bowser_dead_wait_for_mario(void) {
     s32 ret = FALSE;
     cur_obj_become_intangible();
     if (cur_obj_init_animation_and_check_if_near_end(BOWSER_ANIM_LAY_DOWN) && o->oDistanceToMario < 700.0f
-        && abs_angle_diff(gMarioObject->oMoveAngleYaw, o->oAngleToMario) > 0x6000) {
+        && abs_angle_diff(obj_yaw_in_frame(o, gMarioObject, gMarioObject->oMoveAngleYaw), o->oAngleToMario) > 0x6000) {
         ret = TRUE;
     }
     cur_obj_extend_animation_if_at_end();
@@ -1418,7 +1418,7 @@ void bowser_act_tilt_lava_platform(void) {
  */
 s32 bowser_check_fallen_off_stage(void) {
     if (o->oAction != BOWSER_ACT_JUMP_ONTO_STAGE && o->oAction != BOWSER_ACT_TILT_LAVA_PLATFORM) {
-        if (o->oPosY < o->oHomeY - 1000.0f) {
+        if (obj_height(o, &o->oPosVec) < obj_height(o, &o->oHomeVec) - 1000.0f) {
             return TRUE;
         }
         if (o->oMoveFlags & OBJ_MOVE_LANDED) {
@@ -1510,11 +1510,9 @@ s8 sBowserHealth[] = { 1, 1, 3 };
  * Update Bowser's actions when he's hands free
  */
 void bowser_free_update(void) {
-    struct Object *platform = o->platform;
-
-    if (platform != NULL) {
+    if (o->platform != NULL) {
         s16 tempYaw = (s16) o->oFaceAngleYaw;
-        apply_platform_displacement(&sBowserDisplacementInfo, &o->oPosVec, &tempYaw, platform);
+        apply_platform_displacement(&sBowserDisplacementInfo, o, &o->oPosVec, &tempYaw);
         o->oFaceAngleYaw = tempYaw;
     }
 
@@ -1571,7 +1569,7 @@ void bowser_held_update(void) {
     // Copy angle values from Mario
     o->oBowserHeldAnglePitch = gMarioObject->oMoveAnglePitch;
     o->oBowserHeldAngleVelYaw = gMarioObject->oAngleVelYaw;
-    o->oMoveAngleYaw = gMarioObject->oMoveAngleYaw;
+    o->oMoveAngleYaw = obj_yaw_in_frame(o, gMarioObject, gMarioObject->oMoveAngleYaw);
 }
 
 /**
@@ -1593,8 +1591,7 @@ void bowser_thrown_dropped_update(void) {
         swingSpd *= 2.5f;
     }
     // Set distance speed when throwing
-    o->oForwardVel = coss(o->oBowserHeldAnglePitch) * swingSpd;
-    o->oVelY = -sins(o->oBowserHeldAnglePitch) * swingSpd;
+    cur_obj_set_throw_velocity(coss(o->oBowserHeldAnglePitch) * swingSpd, -sins(o->oBowserHeldAnglePitch) * swingSpd);
     cur_obj_become_intangible();
 
     // Reset timer and subactions

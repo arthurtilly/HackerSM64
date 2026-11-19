@@ -7,14 +7,13 @@ struct BookSwitchPosition {
 
 struct ObjectHitbox sFlyingBookendHitbox = {
     /* interactType:      */ INTERACT_HIT_FROM_BELOW,
-    /* downOffset:        */ 0,
     /* damageOrCoinValue: */ 2,
     /* health:            */ 0,
     /* numLootCoins:      */ -1,
-    /* radius:            */ 60,
-    /* height:            */ 30,
-    /* hurtboxRadius:     */ 40,
-    /* hurtboxHeight:     */ 30,
+    /* radius:            */ 44,
+    /* offset:            */ 8,
+    /* hurtboxRadius:     */ 28,
+    /* hurtboxOffset:     */ 13,
 };
 
 struct BookSwitchPosition sBookSwitchPositions[] = {
@@ -25,14 +24,13 @@ struct BookSwitchPosition sBookSwitchPositions[] = {
 
 struct ObjectHitbox sBookSwitchHitbox = {
     /* interactType:      */ INTERACT_BREAKABLE,
-    /* downOffset:        */ 0,
     /* damageOrCoinValue: */ 0,
     /* health:            */ 99,
     /* numLootCoins:      */ 0,
-    /* radius:            */ 20,
-    /* height:            */ 30,
-    /* hurtboxRadius:     */ 20,
-    /* hurtboxHeight:     */ 30,
+    /* radius:            */ 18,
+    /* offset:            */ 12,
+    /* hurtboxRadius:     */ 12,
+    /* hurtboxOffset:     */ 12,
 };
 
 void flying_bookend_act_0(void) {
@@ -275,7 +273,9 @@ void bhv_book_switch_loop(void) {
                     o->parentObj->oBookSwitchManagerNumCorrectChoices++;
                 } else {
                     s16 rand01 = random_u16() & 0x1;
-                    s16 z = gMarioObject->oPosZ + 1.5f * gMarioStates[0].vel[2];
+                    Vec3f worldVel;
+                    obj_local_to_world(gMarioObject, worldVel, gMarioStates[0].vel);
+                    s16 z = gMarioObject->oPosZ + 1.5f * worldVel[2];
 
                     play_sound(SOUND_MENU_CAMERA_BUZZ, gGlobalSoundSource);
 
@@ -298,6 +298,6 @@ void bhv_book_switch_loop(void) {
 
         o->oPosX += o->parentObj->oForwardVel;
         o->oPosZ = o->oHomeZ - o->oBookSwitchDistFromHome;
-        cur_obj_push_mario_away_from_cylinder(70.0f, 70.0f);
+        cur_obj_push_mario_away_from_sphere(18.0f, 35.0f);
     }
 }

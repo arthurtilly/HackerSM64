@@ -2,26 +2,24 @@
 
 struct ObjectHitbox sGrowingBowserFlameHitbox = {
     /* interactType:      */ INTERACT_FLAME,
-    /* downOffset:        */ 20,
     /* damageOrCoinValue: */ 1,
     /* health:            */ 0,
     /* numLootCoins:      */ 0,
-    /* radius:            */ 10,
-    /* height:            */ 40,
+    /* radius:            */ 12,
+    /* offset:            */ 0,
     /* hurtboxRadius:     */ 0,
-    /* hurtboxHeight:     */ 0,
+    /* hurtboxOffset:     */ 0,
 };
 
 struct ObjectHitbox sBowserFlameHitbox = {
     /* interactType:      */ INTERACT_FLAME,
-    /* downOffset:        */ 0,
     /* damageOrCoinValue: */ 1,
     /* health:            */ 0,
     /* numLootCoins:      */ 0,
-    /* radius:            */ 10,
-    /* height:            */ 40,
+    /* radius:            */ 12,
+    /* offset:            */ 18,
     /* hurtboxRadius:     */ 0,
-    /* hurtboxHeight:     */ 0,
+    /* hurtboxOffset:     */ 0,
 };
 
 void bowser_flame_despawn(void) {
@@ -67,8 +65,7 @@ void bhv_flame_large_burning_out_init(void) {
 
 void bowser_flame_move(void) {
     s32 timer = ((o->oFlameSpeedTimerOffset + gGlobalTimer) & 0x3F) << 10;
-    o->oPosX += sins(o->oMoveAngleYaw) * sins(timer) * 4.0f;
-    o->oPosZ += coss(o->oMoveAngleYaw) * sins(timer) * 4.0f;
+    obj_offset_forward(o, &o->oPosVec, &o->oPosVec, o->oMoveAngleYaw, sins(timer) * 4.0f, 0.0f);
 }
 
 void bhv_flame_bowser_loop(void) {
@@ -133,8 +130,8 @@ void bhv_flame_moving_forward_growing_loop(void) {
         obj_mark_for_deletion(o);
     }
 
-    if (o->oPosY < o->oFloorHeight) {
-        o->oPosY = o->oFloorHeight;
+    if (obj_height(o, &o->oPosVec) < o->oFloorHeight) {
+        obj_set_height(o, &o->oPosVec, o->oFloorHeight);
         spawn_object(o, MODEL_RED_FLAME, bhvFlameBowser);
         obj_mark_for_deletion(o);
     }

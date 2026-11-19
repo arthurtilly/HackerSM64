@@ -75,6 +75,7 @@ static s8 gMarioAttackScaleAnimation[3 * 6] = {
 
 struct MarioBodyState gBodyStates[2]; // 2nd is never accessed in practice, most likely Luigi related
 struct GraphNodeObject gMirrorMario;  // copy of Mario's geo node for drawing mirror Mario
+static Quat sMirrorRotation;
 
 // This whole file is weirdly organized. It has to be the same file due
 // to rodata boundaries and function aligns, which means the programmer
@@ -224,19 +225,15 @@ void bhv_toad_message_init(void) {
 static void star_door_unlock_spawn_particles(s16 angleOffset) {
     struct Object *sparkleParticle = spawn_object(o, MODEL_NONE, bhvSparkleSpawn);
 
-    sparkleParticle->oPosX += 100.0f * sins((o->oUnlockDoorStarTimer * 0x2800) + angleOffset);
-    sparkleParticle->oPosZ += 100.0f * coss((o->oUnlockDoorStarTimer * 0x2800) + angleOffset);
-    // Particles are spawned lower each frame
-    sparkleParticle->oPosY -= o->oUnlockDoorStarTimer * 10.0f;
+    obj_offset_forward(o, &sparkleParticle->oPosVec, &o->oPosVec, o->oUnlockDoorStarTimer * 0x2800 + angleOffset,
+                       100.0f, -o->oUnlockDoorStarTimer * 10.0f);
 }
 
 void bhv_unlock_door_star_init(void) {
     o->oUnlockDoorStarState = UNLOCK_DOOR_STAR_RISING;
     o->oUnlockDoorStarTimer = 0;
     o->oUnlockDoorStarYawVel = 0x1000;
-    o->oPosX += 30.0f * sins(gMarioState->faceAngle[1] - 0x4000);
-    o->oPosY += 160.0f;
-    o->oPosZ += 30.0f * coss(gMarioState->faceAngle[1] - 0x4000);
+    obj_offset_forward(gMarioObject, &o->oPosVec, &o->oPosVec, gMarioState->faceAngle[1] - 0x4000, 30.0f, 160.0f);
     o->oMoveAngleYaw = 0x7800;
     obj_scale(o, 0.5f);
 }
@@ -250,7 +247,7 @@ void bhv_unlock_door_star_loop(void) {
     }
     switch (o->oUnlockDoorStarState) {
         case UNLOCK_DOOR_STAR_RISING:
-            o->oPosY += 3.4f; // Raise the star up in the air
+            obj_add_up(o, &o->oPosVec, 3.4f); // Raise the star up in the air
             o->oMoveAngleYaw +=
                 o->oUnlockDoorStarYawVel; // Apply yaw velocity
             cur_obj_scale(o->oUnlockDoorStarTimer / 50.0f + 0.5f); // Scale the star to be bigger
@@ -607,6 +604,11 @@ Gfx *geo_render_mirror_mario(s32 callContext, struct GraphNode *node, UNUSED Mat
                 mirroredX = CASTLE_MIRROR_X - gMirrorMario.pos[0];
                 gMirrorMario.pos[0] = mirroredX + CASTLE_MIRROR_X;
                 gMirrorMario.angle[1] = -gMirrorMario.angle[1];
+                gMirrorMario.angle[2] = -gMirrorMario.angle[2];
+                obj_get_gfx_rotation(mario, &sMirrorRotation);
+                sMirrorRotation.y = -sMirrorRotation.y;
+                sMirrorRotation.z = -sMirrorRotation.z;
+                gMirrorMario.rotation = &sMirrorRotation;
                 gMirrorMario.scale[0] *= -1.0f;
                 ((struct GraphNode *) &gMirrorMario)->flags |= GRAPH_RENDER_ACTIVE;
             } else {

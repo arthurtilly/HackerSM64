@@ -2,26 +2,24 @@
 
 static struct ObjectHitbox sMoneybagHitbox = {
     /* interactType:      */ INTERACT_BOUNCE_TOP,
-    /* downOffset:        */ 0,
     /* damageOrCoinValue: */ 2,
     /* health:            */ 1,
     /* numLootCoins:      */ 0,
-    /* radius:            */ 120,
-    /* height:            */ 60,
-    /* hurtboxRadius:     */ 100,
-    /* hurtboxHeight:     */ 50,
+    /* radius:            */ 97,
+    /* offset:            */ 16,
+    /* hurtboxRadius:     */ 72,
+    /* hurtboxOffset:     */ 21,
 };
 
 static struct ObjectHitbox sMoneybagHiddenHitbox = {
     /* interactType:      */ INTERACT_DAMAGE,
-    /* downOffset:        */ 0,
     /* damageOrCoinValue: */ 2,
     /* health:            */ 1,
     /* numLootCoins:      */ 0,
-    /* radius:            */ 120,
-    /* height:            */ 60,
-    /* hurtboxRadius:     */ 100,
-    /* hurtboxHeight:     */ 50,
+    /* radius:            */ 97,
+    /* offset:            */ 16,
+    /* hurtboxRadius:     */ 72,
+    /* hurtboxOffset:     */ 21,
 };
 
 void moneybag_check_mario_collision(void) {
@@ -95,7 +93,7 @@ static void moneybag_jump(void) {
 }
 
 void moneybag_act_move_around(void) {
-    obj_return_and_displace_home(o, o->oHomeX, o->oHomeY, o->oHomeZ, 200);
+    cur_obj_wander_near_home(200);
 
     cur_obj_update_floor_and_bounce_off_walls();
     cur_obj_move_and_align_with_floor(60);

@@ -132,17 +132,17 @@ void ukiki_act_idle(void) {
 
     // Jump away from Mario after stealing his cap.
     if (o->oUkikiTextState == UKIKI_TEXT_STOLE_CAP) {
-        o->oMoveAngleYaw = gMarioObject->oMoveAngleYaw + 0x8000;
+        o->oMoveAngleYaw = obj_yaw_in_frame(o, gMarioObject, gMarioObject->oMoveAngleYaw) + 0x8000;
 
         if (check_if_moving_over_floor(50.0f, 150.0f)) {
             o->oAction = UKIKI_ACT_JUMP;
         } else {
-            o->oMoveAngleYaw = gMarioObject->oMoveAngleYaw + 0x4000;
+            o->oMoveAngleYaw = obj_yaw_in_frame(o, gMarioObject, gMarioObject->oMoveAngleYaw) + 0x4000;
 
             if (check_if_moving_over_floor(50.0f, 150.0f)) {
                 o->oAction = UKIKI_ACT_JUMP;
             } else {
-                o->oMoveAngleYaw = gMarioObject->oMoveAngleYaw - 0x4000;
+                o->oMoveAngleYaw = obj_yaw_in_frame(o, gMarioObject, gMarioObject->oMoveAngleYaw) - 0x4000;
                 if (check_if_moving_over_floor(50.0f, 150.0f)) {
                     o->oAction = UKIKI_ACT_JUMP;
                 }
@@ -346,7 +346,7 @@ void ukiki_act_go_to_cage(void) {
             if (cur_obj_follow_path() != PATH_REACHED_END) {
                 o->oForwardVel = 10.0f;
                 cur_obj_rotate_yaw_toward(o->oPathedTargetYaw, 0x400);
-                o->oPosY = o->oFloorHeight;
+                obj_set_height(o, &o->oPosVec, o->oFloorHeight);
             } else {
                 o->oForwardVel = 0.0f;
                 o->oSubAction++; // UKIKI_SUB_ACT_CAGE_WAIT_FOR_MARIO
@@ -498,7 +498,7 @@ UNUSED static void ukiki_blink_timer(void) {
  * Called by the main behavior function for the cage ukiki whenever it is held.
  */
 void cage_ukiki_held_loop(void) {
-    if (o->oPosY - o->oHomeY > -100.0f) {
+    if ((obj_height(o, &o->oPosVec) - obj_height(o, &o->oHomeVec)) > -100.0f) {
         switch (o->oUkikiTextState) {
             case UKIKI_TEXT_DEFAULT:
                 if (set_mario_npc_dialog(MARIO_DIALOG_LOOK_UP) == MARIO_DIALOG_STATUS_SPEAK) {

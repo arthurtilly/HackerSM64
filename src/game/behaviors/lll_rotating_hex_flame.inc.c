@@ -1,9 +1,7 @@
 // lll_rotating_hex_flame.inc.c
 
 void bhv_lll_rotating_hex_flame_loop(void) {
-    cur_obj_set_pos_relative(o->parentObj, o->oLllRotatingHexFlameRelativePosX, o->oLllRotatingHexFlameRelativePosY, o->oLllRotatingHexFlameRelativePosZ);
-
-    o->oPosY = o->parentObj->oPosY + 100.0f;
+    cur_obj_set_pos_relative(o->parentObj, o->oLllRotatingHexFlameRelativePosX, 100.0f, o->oLllRotatingHexFlameRelativePosZ);
 
     if (o->parentObj->oAction == LLL_FIRE_BAR_ACT_REMOVE_FLAMES) {
         obj_mark_for_deletion(o);

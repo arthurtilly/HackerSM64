@@ -16,7 +16,7 @@ void bub_spawner_act_spawn_bubs(void) {
 }
 
 void bub_spawner_act_idle(void) {
-    if ((gMarioObject->oPosY - o->oPosY) > 2000.0f) {
+    if ((obj_height_difference(o, &gMarioObject->oPosVec, &o->oPosVec)) > 2000.0f) {
         o->oAction = BUB_SPAWNER_ACT_REMOVE_BUBS;
     }
 }
@@ -41,12 +41,13 @@ void bhv_bub_spawner_loop(void) {
 }
 
 void bub_move_vertically(s32 ySpeed) {
-    f32 parentY = o->parentObj->oPosY;
+    f32 parentY = obj_height(o, &o->parentObj->oPosVec);
+    f32 height = obj_height(o, &o->oPosVec);
     if (
-        parentY - 100.0f - o->oCheepCheepMaxYOffset < o->oPosY
-        && o->oPosY < parentY + 1000.0f + o->oCheepCheepMaxYOffset
+        parentY - 100.0f - o->oCheepCheepMaxYOffset < height
+        && height < parentY + 1000.0f + o->oCheepCheepMaxYOffset
     ) {
-        o->oPosY = approach_f32_symmetric(o->oPosY, o->oCheepCheepTargetY, ySpeed);
+        obj_set_height(o, &o->oPosVec, approach_f32_symmetric(height, o->oCheepCheepTargetY, ySpeed));
     }
 }
 
@@ -62,7 +63,7 @@ void bub_act_swimming_towards_mario(void) {
         o->oCheepCheepRandomSwimAway = random_float();
     }
 
-    f32 dy = o->oPosY - gMarioObject->oPosY;
+    f32 dy = obj_height_difference(o, &o->oPosVec, &gMarioObject->oPosVec);
 
     if (o->oPosY < o->oCheepCheepWaterLevel - 50.0f) {
         if (absf(dy) < 500.0f) {
@@ -109,7 +110,7 @@ void bub_act_swimming_away_from_mario(void) {
         o->oForwardVel = 6.0f;
     }
 
-    f32 dy = o->oPosY - gMarioObject->oPosY;
+    f32 dy = obj_height_difference(o, &o->oPosVec, &gMarioObject->oPosVec);
 
     if (o->oPosY < o->oCheepCheepWaterLevel - 50.0f) {
         if (absf(dy) < 500.0f) {
@@ -144,7 +145,7 @@ ObjActionFunc sCheepCheepActions[] = {
 
 void bhv_bub_loop(void) {
     o->oCheepCheepWaterLevel = find_water_level(o->oPosX, o->oPosZ);
-    o->oCheepCheepTargetY = gMarioObject->oPosY + o->oCheepCheepTargetYOffset;
+    o->oCheepCheepTargetY = obj_height(o, &gMarioObject->oPosVec) + o->oCheepCheepTargetYOffset;
     o->oWallHitboxRadius = 30.0f;
 
     cur_obj_update_floor_and_walls();

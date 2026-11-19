@@ -1,11 +1,10 @@
 // grand_star.inc.c
 
 s32 arc_to_goal_pos(Vec3f a0, Vec3f a1, f32 yVel, f32 gravity) {
-    f32 dx = a0[0] - a1[0];
-    f32 dz = a0[2] - a1[2];
-    f32 planarDist = sqrtf(sqr(dx) + sqr(dz));
-
-    o->oMoveAngleYaw = atan2s(dz, dx);
+    Vec3f delta;
+    obj_local_delta(o, delta, a0, a1);
+    f32 planarDist = sqrtf(sqr(delta[0]) + sqr(delta[2]));
+    o->oMoveAngleYaw = atan2s(delta[2], delta[0]);
     o->oVelY = yVel;
     o->oGravity = gravity;
 
@@ -47,16 +46,16 @@ void bhv_grand_star_loop(void) {
         cur_obj_move_using_fvel_and_gravity();
 
         if (o->oSubAction == 0) {
-            if (o->oPosY < o->oHomeY) {
-                o->oPosY = o->oHomeY;
+            if (obj_height(o, &o->oPosVec) < obj_height(o, &o->oHomeVec)) {
+                obj_set_height(o, &o->oPosVec, obj_height(o, &o->oHomeVec));
                 o->oVelY = 60.0f;
                 o->oForwardVel = 0.0f;
                 o->oSubAction++;
 
                 cur_obj_play_sound_2(SOUND_GENERAL_GRAND_STAR_JUMP);
             }
-        } else if (o->oVelY < 0.0f && o->oPosY < o->oHomeY + 200.0f) {
-            o->oPosY = o->oHomeY + 200.0f;
+        } else if (o->oVelY < 0.0f && obj_height(o, &o->oPosVec) < obj_height(o, &o->oHomeVec) + 200.0f) {
+            obj_set_height(o, &o->oPosVec, obj_height(o, &o->oHomeVec) + 200.0f);
             grand_star_zero_velocity();
             gObjCutsceneDone = TRUE;
             set_mario_npc_dialog(MARIO_DIALOG_STOP);

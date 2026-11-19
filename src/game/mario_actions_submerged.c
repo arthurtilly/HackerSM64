@@ -115,11 +115,14 @@ static void apply_water_current(struct MarioState *m, Vec3f step) {
 
 static u32 perform_water_step(struct MarioState *m) {
     Vec3f step;
-    vec3_copy(step, m->vel);
+    obj_local_to_world(m->marioObj, step, m->vel);
     if (m->action & ACT_FLAG_SWIMMING) apply_water_current(m, step);
     if (m->pos[1] + step[1] > m->waterLevel - 80) {
         step[1] = m->waterLevel - 80 - m->pos[1];
-        m->vel[1] = 0.0f;
+        Vec3f velocity;
+        obj_local_to_world(m->marioObj, velocity, m->vel);
+        velocity[1] = 0.0f;
+        obj_world_to_local(m->marioObj, m->vel, velocity);
     }
     s32 result = move_mario_in_water(m, step);
     vec3f_copy(m->marioObj->header.gfx.pos, m->pos);
@@ -131,8 +134,7 @@ static void update_water_pitch(struct MarioState *m) {
     struct Object *marioObj = m->marioObj;
 
     if (marioObj->header.gfx.angle[0] > 0) {
-        marioObj->header.gfx.pos[1] +=
-            60.0f * sins(marioObj->header.gfx.angle[0]) * sins(marioObj->header.gfx.angle[0]);
+        obj_add_up(marioObj, marioObj->header.gfx.pos, 60.0f * sqr(sins(marioObj->header.gfx.angle[0])));
     }
 
     if (marioObj->header.gfx.angle[0] < 0) {
@@ -903,7 +905,7 @@ static s32 act_water_plunge(struct MarioState *m) {
 
     if (m->actionState == ACT_STATE_WATER_PLUNGE_FALL) {
         play_sound(SOUND_ACTION_WATER_PLUNGE, m->marioObj->header.gfx.cameraToObject);
-        if (m->peakHeight - m->pos[1] > FALL_DAMAGE_HEIGHT_SMALL) {
+        if (m->peakHeight - obj_height(m->marioObj, m->pos) > FALL_DAMAGE_HEIGHT_SMALL) {
             play_sound(SOUND_MARIO_HAHA_WATER, m->marioObj->header.gfx.cameraToObject);
         }
 
@@ -972,8 +974,9 @@ static s32 act_caught_in_whirlpool(struct MarioState *m) {
     struct Object *marioObj = m->marioObj;
     struct Object *whirlpool = m->usedObj;
 
-    f32 dx = m->pos[0] - whirlpool->oPosX;
-    f32 dz = m->pos[2] - whirlpool->oPosZ;
+    Vec3f delta;
+    obj_local_delta(whirlpool, delta, m->pos, &whirlpool->oPosVec);
+    f32 dx = delta[0], dz = delta[2];
     f32 distance = sqrtf(sqr(dx) + sqr(dz));
 
     if ((marioObj->oMarioWhirlpoolPosY += m->vel[1]) < 0.0f) {
@@ -1000,18 +1003,17 @@ static s32 act_caught_in_whirlpool(struct MarioState *m) {
     cosAngleChange = coss(angleChange);
 
     if (distance < 1.0f) {
-        dx = newDistance * sins(m->faceAngle[1]);
-        dz = newDistance * coss(m->faceAngle[1]);
+        s16 yaw = obj_yaw_in_frame(whirlpool, marioObj, m->faceAngle[1]);
+        dx = newDistance * sins(yaw);
+        dz = newDistance * coss(yaw);
     } else {
         dx *= newDistance / distance;
         dz *= newDistance / distance;
     }
 
-    m->pos[0] = whirlpool->oPosX + dx * cosAngleChange + dz * sinAngleChange;
-    m->pos[2] = whirlpool->oPosZ - dx * sinAngleChange + dz * cosAngleChange;
-    m->pos[1] = whirlpool->oPosY + marioObj->oMarioWhirlpoolPosY;
-
-    m->faceAngle[1] = atan2s(dz, dx) + 0x8000;
+    obj_offset_local(whirlpool, m->pos, &whirlpool->oPosVec, dx * cosAngleChange + dz * sinAngleChange,
+                     marioObj->oMarioWhirlpoolPosY, dz * cosAngleChange - dx * sinAngleChange);
+    m->faceAngle[1] = obj_yaw_in_frame(marioObj, whirlpool, atan2s(dz, dx) + 0x8000);
 
     set_mario_animation(m, MARIO_ANIM_GENERAL_FALL);
     vec3f_copy(m->marioObj->header.gfx.pos, m->pos);
@@ -1430,7 +1432,7 @@ static s32 act_hold_metal_water_fall_land(struct MarioState *m) {
 static s32 check_common_submerged_cancels(struct MarioState *m) {
     s16 waterHeight = m->waterLevel - 80;
     if (m->pos[1] > waterHeight) {
-        if (m->floor == NULL || waterHeight > m->floorHeight) {
+        if (m->floor == NULL || waterHeight > obj_world_y_at_height(m->marioObj, m->pos, m->floorHeight)) {
             if (m->pos[1] - waterHeight < 50) {
                 m->pos[1] = waterHeight; // lock mario to top if the falloff isn't big enough
             } else {

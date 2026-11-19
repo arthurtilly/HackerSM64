@@ -19,7 +19,7 @@ void tox_box_shake_screen(void) {
 }
 
 void tox_box_move(f32 forwardVel, f32 leftVel, s16 deltaPitch, s16 deltaRoll) {
-    o->oPosY = 99.41124f * sins((f32)(o->oTimer + 1) / 8 * 0x8000) + o->oHomeY + 3.0f;
+    obj_set_height(o, &o->oPosVec, obj_height(o, &o->oHomeVec) + 3.0f + 99.41124f * sins((o->oTimer + 1) * 0x1000));
     o->oForwardVel = forwardVel;
     o->oLeftVel = leftVel;
     o->oFaceAnglePitch += deltaPitch;
@@ -60,7 +60,7 @@ void tox_box_act_1(void) {
         tox_box_shake_screen();
     }
 
-    o->oPosY = o->oHomeY + 3.0f;
+    obj_set_height(o, &o->oPosVec, obj_height(o, &o->oHomeVec) + 3.0f);
 
     if (o->oTimer == 20) {
         o->oAction = cur_obj_progress_direction_table();

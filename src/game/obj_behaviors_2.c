@@ -39,6 +39,7 @@
 #include "obj_behaviors_2.h"
 #include "object_constants.h"
 #include "object_helpers.h"
+#include "object_collision.h"
 #include "object_list_processor.h"
 #include "platform_displacement.h"
 #include "rendering_graph_node.h"
@@ -91,8 +92,8 @@ static s32 obj_update_race_proposition_dialog(s16 dialogID) {
 }
 
 static void obj_set_dist_from_home(f32 distFromHome) {
-    o->oPosX = o->oHomeX + distFromHome * coss(o->oMoveAngleYaw);
-    o->oPosZ = o->oHomeZ + distFromHome * sins(o->oMoveAngleYaw);
+    f32 up = obj_height_difference(o, &o->oPosVec, &o->oHomeVec);
+    obj_offset_forward(o, &o->oPosVec, &o->oHomeVec, 0x4000 - o->oMoveAngleYaw, distFromHome, up);
 }
 
 static s32 obj_is_near_to_and_facing_mario(f32 maxDist, s16 maxAngleDiff) {
@@ -106,7 +107,9 @@ static s32 obj_is_near_to_and_facing_mario(f32 maxDist, s16 maxAngleDiff) {
 static void obj_perform_position_op(s32 op) {
     switch (op) {
         case POS_OP_SAVE_POSITION:    vec3f_copy(sObjSavedPos, &o->oPosVec); break;
-        case POS_OP_COMPUTE_VELOCITY: vec3f_diff(&o->oVelVec, &o->oPosVec, sObjSavedPos); break;
+        case POS_OP_COMPUTE_VELOCITY:
+            obj_local_delta(o, &o->oVelVec, &o->oPosVec, sObjSavedPos);
+            break;
         case POS_OP_RESTORE_POSITION: vec3f_copy(&o->oPosVec, sObjSavedPos); break;
     }
 }
@@ -167,7 +170,7 @@ static void obj_rotate_yaw_and_bounce_off_walls(s16 targetYaw, s16 turnAmount) {
 }
 
 static s16 obj_get_pitch_to_home(f32 latDistToHome) {
-    return atan2s(latDistToHome, o->oPosY - o->oHomeY);
+    return atan2s(latDistToHome, obj_height(o, &o->oPosVec) - obj_height(o, &o->oHomeVec));
 }
 
 static void obj_compute_vel_from_move_pitch(f32 speed) {
@@ -238,13 +241,11 @@ static s32 cur_obj_play_sound_at_anim_range(s8 startFrame1, s8 startFrame2, u32 
 }
 
 static s16 obj_turn_pitch_toward_mario(f32 targetOffsetY, s16 turnAmount) {
-    s16 targetPitch;
-
-    o->oPosY -= targetOffsetY;
-    targetPitch = obj_turn_toward_object(o, gMarioObject, O_MOVE_ANGLE_PITCH_INDEX, turnAmount);
-    o->oPosY += targetOffsetY;
-
-    return targetPitch;
+    Vec3f delta;
+    obj_local_delta(o, delta, &gMarioObject->oPosVec, &o->oPosVec);
+    s16 pitch = atan2s(sqrtf(sqr(delta[0]) + sqr(delta[2])), -delta[1] - targetOffsetY);
+    o->oMoveAnglePitch = approach_angle(o->oMoveAnglePitch, pitch, turnAmount);
+    return pitch;
 }
 
 static s32 approach_f32_ptr(f32 *px, f32 target, f32 delta) {
@@ -407,37 +408,20 @@ static void obj_update_blinking(s32 *blinkTimer, s16 baseCycleLength, s16 cycleL
 }
 
 static s32 obj_resolve_object_collisions(s32 *targetYaw) {
-    struct Object *otherObject;
-    f32 dx, dz;
-    s16 angle;
-    f32 radius, otherRadius, relativeRadius;
-
-    if (o->numCollidedObjs != 0) {
-        s32 i;
-        for (i = 0; i < o->numCollidedObjs; i++) {
-            otherObject = o->collidedObjs[i];
-            if (otherObject == gMarioObject) continue;
-            if (otherObject->oInteractType & INTERACT_MASK_NO_OBJ_COLLISIONS) continue;
-
-            dx = o->oPosX - otherObject->oPosX;
-            dz = o->oPosZ - otherObject->oPosZ;
-
-            radius = o->hurtboxRadius > 0 ? o->hurtboxRadius : o->hitboxRadius;
-            otherRadius = otherObject->hurtboxRadius > 0 ? otherObject->hurtboxRadius : otherObject->hitboxRadius;
-            relativeRadius = radius + otherRadius;
-
-            if ((sqr(dx) + sqr(dz)) > sqr(relativeRadius)) continue;
-            angle    = atan2s(dz, dx);
-            o->oPosX = otherObject->oPosX + (relativeRadius * sins(angle));
-            o->oPosZ = otherObject->oPosZ + (relativeRadius * coss(angle));
-
-            if (targetYaw != NULL && abs_angle_diff(o->oMoveAngleYaw, angle) < 0x4000) {
-                *targetYaw = (s16)(angle - o->oMoveAngleYaw + angle + 0x8000);
+    for (s32 i = 0; i < o->numCollidedObjs; i++) {
+        struct Object *other = o->collidedObjs[i];
+        Vec3f push;
+        if (other == gMarioObject || (other->oInteractType & INTERACT_MASK_NO_OBJ_COLLISIONS)) continue;
+        if (!obj_sphere_push(o, &o->oPosVec, other, 0.0f, TRUE, push)) continue;
+        vec3_add(&o->oPosVec, push);
+        if (targetYaw != NULL) {
+            s16 angle = obj_yaw_from_direction(o, push);
+            if (abs_angle_diff(o->oMoveAngleYaw, angle) < 0x4000) {
+                *targetYaw = 2 * angle - o->oMoveAngleYaw + 0x8000;
                 return TRUE;
             }
         }
     }
-
     return FALSE;
 }
 
@@ -512,7 +496,7 @@ static void obj_set_knockback_action(s32 attackType) {
     }
 
     o->oFlags &= ~OBJ_FLAG_SET_FACE_YAW_TO_MOVE_YAW;
-    o->oMoveAngleYaw = obj_angle_to_object(gMarioObject, o);
+    o->oMoveAngleYaw = obj_angle_to_object(o, gMarioObject) + 0x8000;
 }
 
 static void obj_set_squished_action(void) {
@@ -733,7 +717,7 @@ static void treat_far_home_as_mario(f32 threshold) {
     vec3f_diff(d, &o->oHomeVec, &o->oPosVec);
 
     if (vec3_sumsq(d) > sqr(threshold)) {
-        o->oAngleToMario = atan2s(d[2], d[0]);
+        o->oAngleToMario = obj_yaw_from_direction(o, d);
         o->oDistanceToMario = 25000.0f;
     } else {
         if (!gMarioObject) {

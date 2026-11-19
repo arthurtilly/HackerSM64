@@ -25,6 +25,7 @@
 #include "mario_misc.h"
 #include "memory.h"
 #include "obj_behaviors.h"
+#include "object_collision.h"
 #include "object_helpers.h"
 #include "object_list_processor.h"
 #include "rendering_graph_node.h"
@@ -99,7 +100,7 @@ void obj_move_xyz_using_fvel_and_yaw(struct Object *obj) {
     obj->oVelX = obj->oForwardVel * sins(obj->oMoveAngleYaw);
     obj->oVelZ = obj->oForwardVel * coss(obj->oMoveAngleYaw);
 
-    vec3f_add(&obj->oPosVec, &obj->oVelVec);
+    obj_offset_local(obj, &obj->oPosVec, &obj->oPosVec, obj->oVelX, obj->oVelY, obj->oVelZ);
 }
 
 /**
@@ -138,36 +139,22 @@ void set_object_visibility(struct Object *obj, s32 dist) {
 /**
  * Turns an object towards home if Mario is not near to it.
  */
-s32 obj_return_home_if_safe(struct Object *obj, f32 homeX, f32 y, f32 homeZ, s32 dist) {
-    f32 homeDistX = homeX - obj->oPosX;
-    f32 homeDistZ = homeZ - obj->oPosZ;
-    s16 angleTowardsHome = atan2s(homeDistZ, homeDistX);
-
-    if (is_point_within_radius_of_mario(homeX, y, homeZ, dist)) {
-        return TRUE;
-    } else {
-        obj->oMoveAngleYaw = approach_s16_symmetric(obj->oMoveAngleYaw, angleTowardsHome, 320);
-    }
-
+static s32 cur_obj_return_home_if_safe(s32 dist) {
+    if (is_point_within_radius_of_mario(o->oHomeX, o->oHomeY, o->oHomeZ, dist)) return TRUE;
+    cur_obj_rotate_yaw_toward(cur_obj_angle_to_home(), 320);
     return FALSE;
 }
 
 /**
  * Randomly displaces an objects home if RNG says to, and turns the object towards its home.
  */
-void obj_return_and_displace_home(struct Object *obj, f32 homeX, UNUSED f32 homeY, f32 homeZ, s32 baseDisp) {
-    s16 angleToNewHome;
-    f32 homeDistX, homeDistZ;
-
+static void cur_obj_wander_near_home(f32 baseDisp) {
     if ((s32)(random_float() * 50.0f) == 0) {
-        obj->oHomeX = (f32)(baseDisp * 2) * random_float() - (f32) baseDisp + homeX;
-        obj->oHomeZ = (f32)(baseDisp * 2) * random_float() - (f32) baseDisp + homeZ;
+        f32 x = random_f32_around_zero(baseDisp * 2);
+        f32 z = random_f32_around_zero(baseDisp * 2);
+        obj_offset_local(o, &o->oHomeVec, &o->oHomeVec, x, 0.0f, z);
     }
-
-    homeDistX = obj->oHomeX - obj->oPosX;
-    homeDistZ = obj->oHomeZ - obj->oPosZ;
-    angleToNewHome = atan2s(homeDistZ, homeDistX);
-    obj->oMoveAngleYaw = approach_s16_symmetric(obj->oMoveAngleYaw, angleToNewHome, 320);
+    cur_obj_rotate_yaw_toward(cur_obj_angle_to_home(), 320);
 }
 
 /**
@@ -190,7 +177,7 @@ s32 obj_check_if_facing_toward_angle(u32 base, u32 goal, s16 range) {
  */
 s32 obj_find_wall_displacement(Vec3f dist, f32 x, f32 y, f32 z, f32 radius) {
     Vec3f pos = { x, y, z };
-    if (!resolve_wall_sphere(pos, gVec3fY, 10.0f, radius, 1.0f, NULL)) return FALSE;
+    if (!resolve_actor_wall(o, pos, 10.0f, radius, 1.0f, NULL)) return FALSE;
     vec3_set(dist, pos[0] - x, pos[1] - y, pos[2] - z);
     return TRUE;
 }
@@ -253,7 +240,7 @@ s32 current_mario_room_check(RoomData room) {
  */
 s32 trigger_obj_dialog_when_facing(s32 *inDialog, s16 dialogID, f32 dist, s32 actionArg) {
     if ((is_point_within_radius_of_mario(o->oPosX, o->oPosY, o->oPosZ, (s32) dist)
-         && obj_check_if_facing_toward_angle(o->oFaceAngleYaw, gMarioObject->header.gfx.angle[1] + 0x8000, 0x1000)
+         && obj_check_if_facing_toward_angle(o->oFaceAngleYaw, obj_yaw_in_frame(o, gMarioObject, gMarioObject->header.gfx.angle[1]) + 0x8000, 0x1000)
          && obj_check_if_facing_toward_angle(o->oMoveAngleYaw, o->oAngleToMario, 0x1000))
         || (*inDialog == TRUE)) {
         *inDialog = TRUE;
@@ -274,22 +261,22 @@ s32 trigger_obj_dialog_when_facing(s32 *inDialog, s16 dialogID, f32 dist, s32 ac
 
 static s32 cur_obj_is_near_floor(void) {
     // Keep contact across short gaps when moving down a slope.
-    return o->oFloor != NULL && o->oPosY - o->oFloorHeight < 37.0f;
+    return o->oFloor != NULL && obj_height(o, &o->oPosVec) - o->oFloorHeight < 37.0f;
 }
 
 static void cur_obj_move_and_align_with_floor(s16 steepSlopeAngle) {
     cur_obj_move_standard(steepSlopeAngle);
-    if (cur_obj_is_near_floor() && (o->oFloor->normal.x != 0.0f || o->oFloor->normal.z != 0.0f)) {
+    if (cur_obj_is_near_floor() && obj_normal_up(o, o->oFloor->normal) < 1.0f) {
         cur_obj_align_gfx_with_floor();
     }
 }
 
 static void cur_obj_accelerate_downhill(void) {
-    const struct Normal *normal = &o->oFloor->normal;
-    f32 downhill = -2.0f * o->oGravity * (sqr(normal->x) + sqr(normal->z));
+    struct Normal normal = obj_local_normal(o, o->oFloor->normal);
+    f32 downhill = -2.0f * o->oGravity * (sqr(normal.x) + sqr(normal.z));
     if (downhill != 0.0f) {
-        o->oVelX += normal->x * downhill;
-        o->oVelZ += normal->z * downhill;
+        o->oVelX += normal.x * downhill;
+        o->oVelZ += normal.z * downhill;
         o->oForwardVel = sqrtf(sqr(o->oVelX) + sqr(o->oVelZ));
         o->oMoveAngleYaw = atan2s(o->oVelZ, o->oVelX);
     }
@@ -325,7 +312,7 @@ s32 obj_lava_death(void) {
         return TRUE;
     } else {
         // Sinking effect
-        o->oPosY -= 10.0f;
+        obj_add_up(o, &o->oPosVec, -10.0f);
     }
 
     if ((o->oTimer % 8) == 0) {
@@ -351,10 +338,9 @@ void spawn_orange_number(s8 behParam, s16 relX, s16 relY, s16 relZ) {
 #endif
 
     struct Object *orangeNumber = spawn_object_relative(behParam, relX, relY, relZ, o, MODEL_NUMBER, bhvOrangeNumber);
-    orangeNumber->oPosY += 25.0f;
+    obj_add_up(o, &orangeNumber->oPosVec, 25.0f);
     orangeNumber->oOrangeNumberOffset = relX;
-    orangeNumber->oHomeX = o->oPosX;
-    orangeNumber->oHomeZ = o->oPosZ;
+    vec3_copy(&orangeNumber->oHomeVec, &o->oPosVec);
 }
 
 /**

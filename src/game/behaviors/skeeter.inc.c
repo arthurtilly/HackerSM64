@@ -7,14 +7,13 @@ struct SkeeterRelPos {
 
 struct ObjectHitbox sSkeeterHitbox = {
     /* interactType:      */ INTERACT_BOUNCE_TOP,
-    /* downOffset:        */ 20,
     /* damageOrCoinValue: */ 2,
     /* health:            */ 0,
     /* numLootCoins:      */ 3,
-    /* radius:            */ 180,
-    /* height:            */ 100,
-    /* hurtboxRadius:     */ 150,
-    /* hurtboxHeight:     */ 90,
+    /* radius:            */ 154,
+    /* offset:            */ 20,
+    /* hurtboxRadius:     */ 123,
+    /* hurtboxOffset:     */ 20,
 };
 
 struct SkeeterRelPos sSkeeterRelPositions[] = {

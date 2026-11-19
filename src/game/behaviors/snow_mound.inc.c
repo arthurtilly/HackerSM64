@@ -4,7 +4,7 @@ void bhv_sliding_snow_mound_loop(void) {
     switch (o->oAction) {
         case 0:
             o->oVelX = -40.0f;
-            o->oPosX += o->oVelX;
+            obj_offset_local(o, &o->oPosVec, &o->oPosVec, o->oVelX, 0.0f, 0.0f);
             if (o->oTimer > 117) {
                 o->oAction = 1;
             }
@@ -13,9 +13,9 @@ void bhv_sliding_snow_mound_loop(void) {
 
         case 1:
             o->oVelX = -5.0f;
-            o->oPosX += o->oVelX;
+            obj_offset_local(o, &o->oPosVec, &o->oPosVec, o->oVelX, 0.0f, 0.0f);
             o->oVelY = -10.0f;
-            o->oPosY += o->oVelY;
+            obj_add_up(o, &o->oPosVec, o->oVelY);
             o->oPosZ = o->oHomeZ - 2.0f;
             if (o->oTimer > 50) {
                 o->activeFlags = ACTIVE_FLAG_DEACTIVATED;

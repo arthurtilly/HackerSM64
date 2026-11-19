@@ -2,14 +2,13 @@
 
 static struct ObjectHitbox sBobombHitbox = {
     /* interactType:      */ INTERACT_GRABBABLE,
-    /* downOffset:        */ 0,
     /* damageOrCoinValue: */ 0,
     /* health:            */ 0,
     /* numLootCoins:      */ 0,
-    /* radius:            */ 65,
-    /* height:            */ 113,
+    /* radius:            */ 42,
+    /* offset:            */ 57,
     /* hurtboxRadius:     */ 0,
-    /* hurtboxHeight:     */ 0,
+    /* hurtboxOffset:     */ 0,
 };
 
 void bobomb_spawn_coin(void) {
@@ -39,7 +38,7 @@ void bobomb_check_interactions(void) {
 
     if (o->oInteractStatus & INT_STATUS_INTERACTED) {
         if (o->oInteractStatus & INT_STATUS_MARIO_KNOCKBACK_DMG) {
-            o->oMoveAngleYaw = gMarioObject->header.gfx.angle[1];
+            o->oMoveAngleYaw = obj_yaw_in_frame(o, gMarioObject, gMarioObject->header.gfx.angle[1]);
             o->oForwardVel = 25.0f;
             o->oVelY = 30.0f;
             o->oAction = BOBOMB_ACT_LAUNCHED;
@@ -62,7 +61,7 @@ void bobomb_act_patrol(void) {
 
     cur_obj_update_floor_and_bounce_off_walls();
     cur_obj_move_and_align_with_floor(60);
-    if (obj_return_home_if_safe(o, o->oHomeX, o->oHomeY, o->oHomeZ, 400)
+    if (cur_obj_return_home_if_safe(400)
      && obj_check_if_facing_toward_angle(o->oMoveAngleYaw, o->oAngleToMario, 0x2000)) {
         o->oBobombFuseLit = TRUE;
         o->oAction = BOBOMB_ACT_CHASE_MARIO;
@@ -162,8 +161,7 @@ void bobomb_thrown_loop(void) {
     o->header.gfx.node.flags &= ~GRAPH_RENDER_INVISIBLE;
     o->oHeldState = HELD_FREE;
     o->oFlags &= ~OBJ_FLAG_SET_FACE_YAW_TO_MOVE_YAW;
-    o->oForwardVel = 25.0f;
-    o->oVelY = 20.0f;
+    cur_obj_set_throw_velocity(25.0f, 20.0f);
     o->oAction = BOBOMB_ACT_LAUNCHED;
 }
 
@@ -236,7 +234,7 @@ void bhv_bobomb_loop(void) {
 
 void bhv_bobomb_fuse_smoke_init(void) {
     o->oPosX += (s32)(random_float() * 80.0f) - 40;
-    o->oPosY += (s32)(random_float() * 80.0f) + 60;
+    obj_add_up(o, &o->oPosVec, (s32)(random_float() * 80.0f) + 60);
     o->oPosZ += (s32)(random_float() * 80.0f) - 40;
     cur_obj_scale(1.2f);
 }

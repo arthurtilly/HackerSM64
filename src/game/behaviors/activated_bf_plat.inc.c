@@ -123,11 +123,11 @@ void bhv_activated_back_and_forth_platform_update(void) {
     // If the platform moves vertically...
     if (o->oActivatedBackAndForthPlatformVertical != FALSE) {
         // ...set its position to its original position + the offset.
-        o->oPosY = o->oHomeY + o->oActivatedBackAndForthPlatformOffset;
+        obj_set_height(o, &o->oPosVec, obj_height(o, &o->oHomeVec) + o->oActivatedBackAndForthPlatformOffset);
     } else {
         // Otherwise, dip down 20 units if Mario gets on the horizontal platform, and undo if he gets off.
-        o->oPosY += o->oVelY;
-        clamp_f32(&o->oPosY, o->oHomeY - 20.0f, o->oHomeY);
+        f32 up = obj_height_difference(o, &o->oPosVec, &o->oHomeVec);
+        obj_add_up(o, &o->oPosVec, CLAMP(up + o->oVelY, -20.0f, 0.0f) - up);
 
         // Update the position using the object's home (original position), facing angle, and offset.
         // This has to be done manually when the platform is vertical because only the yaw is used

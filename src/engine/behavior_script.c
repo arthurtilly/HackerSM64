@@ -7,6 +7,7 @@
 #include "game/behavior_actions.h"
 #include "game/game_init.h"
 #include "game/mario.h"
+#include "game/object_collision.h"
 #include "game/memory.h"
 #include "game/obj_behaviors_2.h"
 #include "game/object_helpers.h"
@@ -34,14 +35,6 @@
 UNUSED static void goto_behavior_unused(const BehaviorScript *bhvAddr) {
     gCurBhvCommand = segmented_to_virtual(bhvAddr);
     gCurrentObject->bhvStackIndex = 0;
-}
-
-// Update an object's graphical position and rotation to match its real position and rotation.
-void obj_update_gfx_pos_and_angle(struct Object *obj) {
-    vec3_copy_y_off(obj->header.gfx.pos, &obj->oPosVec, obj->oGraphYOffset);
-    obj->header.gfx.angle[0] = (obj->oFaceAnglePitch & 0xFFFF);
-    obj->header.gfx.angle[1] = (obj->oFaceAngleYaw   & 0xFFFF);
-    obj->header.gfx.angle[2] = (obj->oFaceAngleRoll  & 0xFFFF);
 }
 
 #ifdef OBJ_OPACITY_BY_CAM_DIST
@@ -510,9 +503,13 @@ static s32 bhv_cmd_animate(void) {
 // Command 0x1E: Finds the floor triangle directly under the object and moves the object down to it.
 // Usage: DROP_TO_FLOOR()
 static s32 bhv_cmd_drop_to_floor(void) {
-    f32 floor = find_floor_height(gCurrentObject->oPosX, gCurrentObject->oPosY + 200.0f, gCurrentObject->oPosZ);
-    gCurrentObject->oPosY = floor;
-    gCurrentObject->oMoveFlags |= OBJ_MOVE_ON_GROUND;
+    struct Object *obj = gCurrentObject;
+    struct SurfaceContact floor;
+    f32 height = find_actor_floor(obj, &obj->oPosVec, 200.0f, &floor);
+    if (floor.surface != NULL) {
+        obj_set_height(obj, &obj->oPosVec, height);
+        obj->oMoveFlags |= OBJ_MOVE_ON_GROUND;
+    }
 
     gCurBhvCommand++;
     return BHV_PROC_CONTINUE;
@@ -562,42 +559,34 @@ static s32 bhv_cmd_sum_int(void) {
     return BHV_PROC_CONTINUE;
 }
 
-// Command 0x23: Sets the size of the object's cylindrical hitbox.
-// Usage: SET_HITBOX(radius, height)
+// Command 0x23: SET_HITBOX(radius, offset)
 static s32 bhv_cmd_set_hitbox(void) {
     s16 radius = BHV_CMD_GET_1ST_S16(1);
-    s16 height = BHV_CMD_GET_2ND_S16(1);
+    s16 offset = BHV_CMD_GET_2ND_S16(1);
 
     gCurrentObject->hitboxRadius = radius;
-    gCurrentObject->hitboxHeight = height;
+    gCurrentObject->hitboxOffset = offset;
+    gCurrentObject->interactionHalfHeight = 0;
 
     gCurBhvCommand += 2;
     return BHV_PROC_CONTINUE;
 }
 
-// Command 0x2E: Sets the size of the object's cylindrical hurtbox.
-// Usage: SET_HURTBOX(radius, height)
+// Command 0x2E: SET_HURTBOX(radius, offset)
 static s32 bhv_cmd_set_hurtbox(void) {
     s16 radius = BHV_CMD_GET_1ST_S16(1);
-    s16 height = BHV_CMD_GET_2ND_S16(1);
+    s16 offset = BHV_CMD_GET_2ND_S16(1);
 
     gCurrentObject->hurtboxRadius = radius;
-    gCurrentObject->hurtboxHeight = height;
+    gCurrentObject->hurtboxOffset = offset;
 
     gCurBhvCommand += 2;
     return BHV_PROC_CONTINUE;
 }
 
-// Command 0x2B: Sets the size of the object's cylindrical hitbox, and applies a downwards offset.
-// Usage: SET_HITBOX_WITH_OFFSET(radius, height, downOffset)
-static s32 bhv_cmd_set_hitbox_with_offset(void) {
-    s16 radius = BHV_CMD_GET_1ST_S16(1);
-    s16 height = BHV_CMD_GET_2ND_S16(1);
-    s16 downOffset = BHV_CMD_GET_1ST_S16(2);
-
-    gCurrentObject->hitboxRadius = radius;
-    gCurrentObject->hitboxHeight = height;
-    gCurrentObject->hitboxDownOffset = downOffset;
+// Command 0x2B: SET_INTERACTION_VOLUME(radius, bottom, top)
+static s32 bhv_cmd_set_interaction_volume(void) {
+    obj_set_interaction_volume(gCurrentObject, BHV_CMD_GET_1ST_S16(1), BHV_CMD_GET_2ND_S16(1), BHV_CMD_GET_1ST_S16(2));
 
     gCurBhvCommand += 3;
     return BHV_PROC_CONTINUE;
@@ -791,7 +780,7 @@ static BhvCommandProc BehaviorCmdTable[] = {
     /*BHV_CMD_ANIMATE               */ bhv_cmd_animate,
     /*BHV_CMD_SPAWN_CHILD_WITH_PA   */ bhv_cmd_spawn_child_with_param,
     /*BHV_CMD_LOAD_COLLISION_DATA   */ bhv_cmd_load_collision_data,
-    /*BHV_CMD_SET_HITBOX_WITH_OFF   */ bhv_cmd_set_hitbox_with_offset,
+    /*BHV_CMD_SET_INTERACTION_VOLUME*/ bhv_cmd_set_interaction_volume,
     /*BHV_CMD_SPAWN_OBJ             */ bhv_cmd_spawn_obj,
     /*BHV_CMD_SET_HOME              */ bhv_cmd_set_home,
     /*BHV_CMD_SET_HURTBOX           */ bhv_cmd_set_hurtbox,
@@ -819,6 +808,9 @@ void cur_obj_update(void) {
         cur_obj_disable_rendering_in_room();
         return;
     }
+
+    o->header.gfx.rotation = NULL;
+    if (o->header.gfx.transformFlags & GRAPH_OBJ_PARENT) obj_inherit_gravity_frame(o, o->parentObj);
 
     // Calculate the distance from the object to Mario.
     if (objFlags & OBJ_FLAG_COMPUTE_DIST_TO_MARIO) {
@@ -881,12 +873,8 @@ void cur_obj_update(void) {
         cur_obj_move_y_with_terminal_vel();
     }
 
-    if (objFlags & OBJ_FLAG_TRANSFORM_RELATIVE_TO_PARENT) {
-        obj_build_transform_relative_to_parent(o);
-    }
-
-    if (objFlags & OBJ_FLAG_SET_THROW_MATRIX_FROM_TRANSFORM) {
-        obj_set_throw_matrix_from_transform(o);
+    if (o->header.gfx.transformFlags & GRAPH_OBJ_PARENT) {
+        obj_update_relative_pos(o);
     }
 
     if (objFlags & OBJ_FLAG_UPDATE_GFX_POS_AND_ANGLE) {

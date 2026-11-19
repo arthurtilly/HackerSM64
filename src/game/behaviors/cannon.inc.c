@@ -1,7 +1,7 @@
 // cannon.inc.c
 
 void bhv_cannon_base_unused_loop(void) {
-    o->oPosY += o->oVelY;
+    obj_add_up(o, &o->oPosVec, o->oVelY);
 }
 
 void opened_cannon_act_idle(void) { // act 0
@@ -39,17 +39,12 @@ void opened_cannon_act_rising(void) { // act 4
         cur_obj_play_sound_2(SOUND_OBJ_CANNON_RISE);
     }
 
-    o->oPosY += 5.0f;
-    f32 horizontalVel = (f32)(((o->oTimer / 2) & 0x1) - 0.5f) * 2; 
-    o->oPosX += horizontalVel;
-    o->oPosZ += horizontalVel;
-
+    f32 shake = (o->oTimer & 2) ? 1.0f : -1.0f;
     if (o->oTimer > 67) {
-        horizontalVel *= 2;
-        o->oPosX += horizontalVel;
-        o->oPosZ += horizontalVel;
+        shake *= 3.0f;
         o->oAction = 6;
     }
+    obj_offset_local(o, &o->oPosVec, &o->oPosVec, shake, 5.0f, shake);
 }
 
 void opened_cannon_act_turning_yaw(void) { // act 6
@@ -133,7 +128,7 @@ void bhv_cannon_barrel_loop(void) {
     if (parent->header.gfx.node.flags & GRAPH_RENDER_ACTIVE) {
         cur_obj_enable_rendering();
         obj_copy_pos(o, o->parentObj);
-        o->oMoveAngleYaw = o->parentObj->oMoveAngleYaw;
+        o->oMoveAngleYaw = obj_yaw_in_frame(o, o->parentObj, o->parentObj->oMoveAngleYaw);
         o->oFaceAnglePitch = o->parentObj->oMoveAnglePitch;
     } else {
         cur_obj_disable_rendering();

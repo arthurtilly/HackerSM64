@@ -8,12 +8,7 @@ void dorrie_raise_head(void) {
     f32 xzDisp = 440.0f * (coss(o->oDorrieNeckAngle) - coss(startAngle));
     f32 yDisp = 440.0f * (sins(o->oDorrieNeckAngle) - sins(startAngle));
 
-    vec3f_set(
-        gMarioState->pos,
-        gMarioObject->oPosX + (xzDisp * sins(o->oMoveAngleYaw)),
-        gMarioObject->oPosY - yDisp,
-        gMarioObject->oPosZ + (xzDisp * coss(o->oMoveAngleYaw))
-    );
+    obj_offset_forward(o, gMarioState->pos, &gMarioObject->oPosVec, o->oMoveAngleYaw, xzDisp, -yDisp);
 }
 
 void dorrie_act_move(void) {
@@ -32,7 +27,7 @@ void dorrie_act_move(void) {
         o->oDorrieYawVel = 0;
     } else {
         if (gMarioObject->platform == o) {
-            targetYaw = gMarioObject->oFaceAngleYaw;
+            targetYaw = obj_yaw_in_frame(o, gMarioObject, gMarioObject->oFaceAngleYaw);
             targetSpeed = 10;
         } else {
             s16 circularTurn = 0x4000 - atan2s(2000.0f, o->oDorrieDistToHome - 2000.0f);
@@ -112,8 +107,8 @@ void bhv_dorrie_update(void) {
         f32 boundsShift = 440.0f * coss(o->oDorrieNeckAngle) * coss(o->oMoveAngleYaw - o->oDorrieAngleToHome);
 
         if (clamp_f32(&o->oDorrieDistToHome, 1650.0f + boundsShift, 2300.0f + boundsShift)) {
-            o->oPosX = o->oHomeX - o->oDorrieDistToHome * sins(o->oDorrieAngleToHome);
-            o->oPosZ = o->oHomeZ - o->oDorrieDistToHome * coss(o->oDorrieAngleToHome);
+            obj_offset_forward(o, &o->oPosVec, &o->oHomeVec, o->oDorrieAngleToHome, -o->oDorrieDistToHome,
+                               obj_height_difference(o, &o->oPosVec, &o->oHomeVec));
         }
 
         o->oDorrieGroundPounded = cur_obj_is_mario_ground_pounding_platform();
@@ -137,7 +132,7 @@ void bhv_dorrie_update(void) {
             o->oDorrieOffsetY = maxOffsetY;
         }
 
-        o->oPosY = o->oHomeY + o->oDorrieOffsetY;
+        obj_set_height(o, &o->oPosVec, obj_height(o, &o->oHomeVec) + o->oDorrieOffsetY);
 
         switch (o->oAction) {
             case DORRIE_ACT_MOVE:

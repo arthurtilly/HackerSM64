@@ -7,7 +7,7 @@ void spawn_triangle_break_particles(s16 numTris, s16 triModel, f32 triSize, s16 
     for (i = 0; i < numTris; i++) {
         triangle = spawn_object(o, triModel, bhvBreakBoxTriangle);
         triangle->oAnimState = triAnimState;
-        triangle->oPosY += 100.0f;
+        obj_add_up(triangle, &triangle->oPosVec, 100.0f);
         triangle->oMoveAngleYaw = random_u16();
         triangle->oFaceAngleYaw = triangle->oMoveAngleYaw;
         triangle->oFaceAnglePitch = random_u16();

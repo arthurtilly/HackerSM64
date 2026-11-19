@@ -82,24 +82,9 @@ enum ShadowSolidity {
     SHADOW_SOLIDITY_NOT_YET_SET,
 };
 
-/**
- * A struct containing info about hardcoded rectangle shadows.
- */
-typedef struct {
-    /* X scale of the rectangle. */
-    f32 scaleX;
-    /* Z scale of the rectangle. */
-    f32 scaleZ;
-    /* Flag for if this shadow be smaller when its object is further away. */
-    u8 scaleWithDistance : 1;
-} ShadowRectangle;
-
 extern struct Shadow gCurrShadow;
 
-/**
- * Given the (x, y, z) location of an object, create a shadow below that object
- * with the given initial solidity and "shadowType" (described above).
- */
-Gfx *create_shadow_below_xyz(Vec3f pos, s16 shadowScale, u8 shadowSolidity, s8 shadowType, s8 shifted);
+// Project pos along the object's gravity and create the display list for the shadow there.
+Gfx *create_shadow(const struct Object *obj, Vec3f pos, s16 shadowScale, u8 shadowSolidity, s8 shadowType);
 
 #endif // SHADOW_H

@@ -174,9 +174,9 @@ void king_whomp_on_ground(void) {
     } else {
         if (o->oWhompShakeVal < 10) {
             if (o->oWhompShakeVal % 2) {
-                o->oPosY += 8.0f;
+                obj_add_up(o, &o->oPosVec, 8.0f);
             } else {
-                o->oPosY -= 8.0f;
+                obj_add_up(o, &o->oPosVec, -8.0f);
             }
         } else {
             o->oSubAction = 10;
@@ -241,7 +241,7 @@ void whomp_die(void) {
             spawn_mist_particles_variable(0, 0, 200.0f);
             spawn_triangle_break_particles(20, MODEL_DIRT_ANIMATION, 3.0f, 4);
             cur_obj_shake_screen(SHAKE_POS_SMALL);
-            o->oPosY += 100.0f;
+            obj_add_up(o, &o->oPosVec, 100.0f);
             spawn_default_star(180.0f, 3880.0f, 340.0f);
             cur_obj_play_sound_2(SOUND_OBJ_KING_WHOMP_DEATH);
             o->oAction = 9;

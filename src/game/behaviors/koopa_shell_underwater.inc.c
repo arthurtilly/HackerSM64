@@ -2,14 +2,13 @@
 
 struct ObjectHitbox sKoopaShellUnderwaterHitbox = {
     /* interactType:      */ INTERACT_GRABBABLE,
-    /* downOffset:        */ 0,
     /* damageOrCoinValue: */ 0,
     /* health:            */ 1,
     /* numLootCoins:      */ 0,
-    /* radius:            */ 80,
-    /* height:            */ 50,
+    /* radius:            */ 59,
+    /* offset:            */ 18,
     /* hurtboxRadius:     */ 0,
-    /* hurtboxHeight:     */ 0,
+    /* hurtboxOffset:     */ 0,
 };
 
 void set_koopa_shell_underwater_hitbox(void) {

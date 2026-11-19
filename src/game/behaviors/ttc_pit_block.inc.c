@@ -39,10 +39,8 @@ static struct TTCPitBlockProperties sTTCPitBlockProperties[][2] = {
 void bhv_ttc_pit_block_init(void) {
     o->collisionData = segmented_to_virtual(sTTCPitBlockCollisionModels[o->oBehParams2ndByte]);
 
-    o->oTTCPitBlockPeakY = o->oPosY + 330.0f;
-
     if (gTTCSpeedSetting == TTC_SPEED_STOPPED) {
-        o->oPosY += 330.0f;
+        obj_add_up(o, &o->oPosVec, 330.0f);
     }
 }
 
@@ -52,10 +50,10 @@ void bhv_ttc_pit_block_init(void) {
  */
 void bhv_ttc_pit_block_update(void) {
     if (o->oTimer > o->oTTCPitBlockWaitTime) {
-        // Forward vel and gravity are zero, so this just does posY += velY
-        cur_obj_move_using_fvel_and_gravity();
-
-        if (clamp_f32(&o->oPosY, o->oHomeY, o->oTTCPitBlockPeakY)) {
+        f32 offset = obj_height_difference(o, &o->oPosVec, &o->oHomeVec) + o->oVelY;
+        s32 reachedEnd = clamp_f32(&offset, 0.0f, 330.0f);
+        obj_offset_up(o, &o->oPosVec, &o->oHomeVec, offset);
+        if (reachedEnd) {
             o->oTTCPitBlockDir ^= 0x1;
 
             if ((o->oTTCPitBlockWaitTime = sTTCPitBlockProperties[gTTCSpeedSetting][o->oTTCPitBlockDir & 0x1].waitTime) < 0) {

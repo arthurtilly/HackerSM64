@@ -7,7 +7,7 @@ void sinking_rectangular_plat_actions(f32 a0, s32 a1) {
             break;
 
         case 1:
-            o->oPosY -= sins(o->oLllWoodPieceOscillationTimer) * a0;
+            obj_add_up(o, &o->oPosVec, -sins(o->oLllWoodPieceOscillationTimer) * a0);
             o->oLllWoodPieceOscillationTimer += a1;
             break;
 

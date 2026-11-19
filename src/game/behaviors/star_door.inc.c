@@ -3,8 +3,7 @@
 void star_door_update_pos(void) {
     o->oVelX = (o->oLeftVel) * coss(o->oMoveAngleYaw);
     o->oVelZ = (o->oLeftVel) * -sins(o->oMoveAngleYaw);
-    o->oPosX += o->oVelX;
-    o->oPosZ += o->oVelZ;
+    obj_offset_local(o, &o->oPosVec, &o->oPosVec, o->oVelX, 0.0f, o->oVelZ);
 }
 
 void bhv_star_door_loop(void) {

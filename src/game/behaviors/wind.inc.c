@@ -4,7 +4,7 @@ void spawn_wind_particles(s16 pitch, s16 yaw) {
     s32 i;
     for (i = 0; i < 3; i++) {
         struct Object *wind = spawn_object(o, MODEL_MIST, bhvWind);
-        wind->oMoveAngleYaw = yaw;
+        wind->oMoveAngleYaw = obj_yaw_in_frame(wind, NULL, yaw);
         wind->oMoveAnglePitch = pitch;
     }
 }
@@ -14,14 +14,13 @@ void bhv_wind_loop(void) {
         o->oOpacity = 100;
         if (o->oMoveAnglePitch == 0) {
             obj_translate_xz_random(o, 900.0f);
-            o->oPosX += sins(o->oMoveAngleYaw + 0x8000) * 500; // NOP as Pitch is 0
-            o->oPosY += 80.0f + random_f32_around_zero(200.0f);
-            o->oPosZ += coss(o->oMoveAngleYaw + 0x8000) * 500; // -coss(a) * sp2E
+            obj_offset_forward(o, &o->oPosVec, &o->oPosVec, o->oMoveAngleYaw, -500.0f,
+                               80.0f + random_f32_around_zero(200.0f));
             o->oMoveAngleYaw += random_f32_around_zero(4000.0f);
             o->oForwardVel = random_float() * 70.0f + 50.0f;
         } else {
             obj_translate_xz_random(o, 600.0f);
-            o->oPosY -= 300;
+            obj_add_up(o, &o->oPosVec, -300);
             o->oVelY = random_float() * 30.0f + 50.0f;
             o->oMoveAngleYaw = random_u16();
             o->oForwardVel = 10.0f;

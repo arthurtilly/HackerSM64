@@ -16,15 +16,15 @@ void bhv_flamethrower_flame_loop(void) {
     }
 
     if (o->oBehParams2ndByte == FLAMETHROWER_BP_TALL_HITBOX) {
-        o->hitboxHeight = 200.0f;
-        o->hitboxDownOffset = 150.0f;
+        o->hitboxRadius = 70.0f;
+        o->hitboxOffset = -65.0f;
         o->oVelY = -28.0f;
 
         cur_obj_update_floor_height();
 
-        if (o->oPosY - 25.0f * scale < o->oFloorHeight) {
+        if (obj_height(o, &o->oPosVec) - 25.0f * scale < o->oFloorHeight) {
             o->oVelY = 0;
-            o->oPosY = o->oFloorHeight + 25.0f * scale;
+            obj_set_height(o, &o->oPosVec, o->oFloorHeight + 25.0f * scale);
         }
 
         remainingTime = o->parentObj->oFlameThowerTimeRemaining / 1.2f;
@@ -35,7 +35,7 @@ void bhv_flamethrower_flame_loop(void) {
     cur_obj_scale(scale);
 
     if (o->oBehParams2ndByte == FLAMETHROWER_BP_UPWARDS) {
-        o->oPosY += o->oForwardVel; // weird?
+        obj_add_up(o, &o->oPosVec, o->oForwardVel); // weird?
     } else {
         cur_obj_move_using_fvel_and_gravity();
     }

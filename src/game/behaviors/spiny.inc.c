@@ -11,14 +11,13 @@
  */
 static struct ObjectHitbox sSpinyHitbox = {
     /* interactType:      */ INTERACT_MR_BLIZZARD,
-    /* downOffset:        */ 0,
     /* damageOrCoinValue: */ 2,
     /* health:            */ 0,
     /* numLootCoins:      */ 0,
-    /* radius:            */ 80,
-    /* height:            */ 50,
-    /* hurtboxRadius:     */ 40,
-    /* hurtboxHeight:     */ 40,
+    /* radius:            */ 58,
+    /* offset:            */ 14,
+    /* hurtboxRadius:     */ 24,
+    /* hurtboxOffset:     */ 18,
 };
 
 /**
@@ -124,11 +123,11 @@ static void spiny_act_held_by_lakitu(void) {
 
     if (o->parentObj->prevObj == NULL) {
         o->oAction = SPINY_ACT_THROWN_BY_LAKITU;
-        o->oMoveAngleYaw = o->parentObj->oFaceAngleYaw;
+        o->oMoveAngleYaw = obj_yaw_in_frame(o, o->parentObj, o->parentObj->oFaceAngleYaw);
 
         // Move more quickly if the lakitu is moving forward
         o->oForwardVel =
-            o->parentObj->oForwardVel * coss(o->oMoveAngleYaw - o->parentObj->oMoveAngleYaw) + 10.0f;
+            o->parentObj->oForwardVel * coss(o->oMoveAngleYaw - obj_yaw_in_frame(o, o->parentObj, o->parentObj->oMoveAngleYaw)) + 10.0f;
         o->oVelY = 30.0f;
 
         o->oMoveFlags = 0; // you do you, spiny

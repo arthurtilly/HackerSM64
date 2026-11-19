@@ -9,14 +9,13 @@
  */
 static struct ObjectHitbox sSwoopHitbox = {
     /* interactType:      */ INTERACT_HIT_FROM_BELOW,
-    /* downOffset:        */ 0,
     /* damageOrCoinValue: */ 1,
     /* health:            */ 0,
     /* numLootCoins:      */ 1,
-    /* radius:            */ 100,
-    /* height:            */ 80,
-    /* hurtboxRadius:     */ 70,
-    /* hurtboxHeight:     */ 70,
+    /* radius:            */ 77,
+    /* offset:            */ 32,
+    /* hurtboxRadius:     */ 48,
+    /* hurtboxOffset:     */ 29,
 };
 
 /**
@@ -66,7 +65,7 @@ static void swoop_act_move(void) {
             // If we're not done swooping, turn toward mario. When between
             // 0 and 200 units above mario, increase speed and stop swooping
             o->oSwoopTargetYaw = o->oAngleToMario;
-            if (o->oPosY < gMarioObject->oPosY + 200.0f) {
+            if (obj_height_difference(o, &o->oPosVec, &gMarioObject->oPosVec) < 200.0f) {
                 if (obj_y_vel_approach(0.0f, 0.5f)) {
                     o->oForwardVel *= 2.0f;
                 }

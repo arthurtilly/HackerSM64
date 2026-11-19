@@ -9,7 +9,7 @@ static s32 sCapSaveFlags[] = {
 void cap_switch_act_init(void) {
     o->oAnimState = o->oBehParams2ndByte;
     cur_obj_scale(0.5f);
-    o->oPosY += 71.0f;
+    obj_add_up(o, &o->oPosVec, 71.0f);
 
     spawn_object_relative_with_scale(0, 0, -71, 0, 0.5f, o, MODEL_CAP_SWITCH_BASE, bhvCapSwitchBase);
 #ifdef ENABLE_VANILLA_LEVEL_SPECIFIC_CHECKS

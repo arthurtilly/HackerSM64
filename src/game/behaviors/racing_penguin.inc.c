@@ -3,12 +3,12 @@
 struct RacingPenguinData {
     s16 text;
     f32 radius;
-    f32 height;
+    f32 offset;
 };
 
 static struct RacingPenguinData sRacingPenguinData[] = {
-    { DIALOG_055, 200.0f, 200.0f },
-    { DIALOG_164, 350.0f, 250.0f },
+    { DIALOG_055, 132.0f, 95.0f },
+    { DIALOG_164, 280.0f, 122.0f },
 };
 
 void bhv_racing_penguin_init(void) {
@@ -20,7 +20,7 @@ void bhv_racing_penguin_init(void) {
 }
 
 static void racing_penguin_act_wait_for_mario(void) {
-    if (o->oTimer > o->oRacingPenguinInitTextCooldown && o->oPosY - gMarioObject->oPosY <= 0.0f
+    if (o->oTimer > o->oRacingPenguinInitTextCooldown && obj_height_difference(o, &o->oPosVec, &gMarioObject->oPosVec) <= 0.0f
         && cur_obj_can_mario_activate_textbox_2(400.0f, 400.0f)) {
         o->oAction = RACING_PENGUIN_ACT_SHOW_INIT_TEXT;
     }
@@ -64,7 +64,7 @@ static void racing_penguin_act_race(void) {
         o->oRacingPenguinReachedBottom = TRUE;
         o->oAction = RACING_PENGUIN_ACT_FINISH_RACE;
     } else {
-        f32 targetSpeed = o->oPosY - gMarioObject->oPosY;
+        f32 targetSpeed = obj_height_difference(o, &o->oPosVec, &gMarioObject->oPosVec);
         f32 minSpeed = 70.0f;
 
         cur_obj_play_sound_1(SOUND_AIR_ROUGH_SLIDE);
@@ -176,8 +176,8 @@ void bhv_racing_penguin_update(void) {
 
     cur_obj_move_standard(78);
     cur_obj_align_gfx_with_floor();
-    cur_obj_push_mario_away_from_cylinder(sRacingPenguinData[o->oBehParams2ndByte].radius,
-                                          sRacingPenguinData[o->oBehParams2ndByte].height);
+    struct RacingPenguinData *penguin = &sRacingPenguinData[o->oBehParams2ndByte];
+    cur_obj_push_mario_away_from_sphere(penguin->radius, penguin->offset);
 }
 
 void bhv_penguin_race_finish_line_update(void) {

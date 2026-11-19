@@ -4,6 +4,12 @@
 // This file contains macros that provide descriptive names for
 // field-specific and object-specific constants, e.g. actions.
 
+// Player interaction spheres, in unscaled world units from Mario's feet.
+#define MARIO_BODY_RADIUS 72
+#define MARIO_CRAWL_RADIUS 48
+#define MARIO_HURT_RADIUS 24
+#define MARIO_HURT_OFFSET 38
+
 /* activeFlags */
 enum ObjActiveFlags {
     ACTIVE_FLAG_DEACTIVATED                    = (0 <<  0), // 0x0000
@@ -37,13 +43,11 @@ enum ObjFlags {
     OBJ_FLAG_MOVE_Y_WITH_TERMINAL_VEL          = (1 <<  2), // 0x00000004
     OBJ_FLAG_SET_FACE_YAW_TO_MOVE_YAW          = (1 <<  3), // 0x00000008
     OBJ_FLAG_SET_FACE_ANGLE_TO_MOVE_ANGLE      = (1 <<  4), // 0x00000010
-    OBJ_FLAG_UPDATE_TRANSFORM_FOR_THROW_MATRIX = (1 <<  5), // 0x00000020
+    OBJ_FLAG_HITBOX_UP_FROM_GRAVITY            = (1 <<  5), // Mario and rolling models spin about their center.
     OBJ_FLAG_COMPUTE_DIST_TO_MARIO             = (1 <<  6), // 0x00000040
     OBJ_FLAG_ACTIVE_FROM_AFAR                  = (1 <<  7), // 0x00000080
     OBJ_FLAG_PLAYER                            = (1 <<  8), // 0x00000100
-    OBJ_FLAG_TRANSFORM_RELATIVE_TO_PARENT      = (1 <<  9), // 0x00000200
     OBJ_FLAG_HOLDABLE                          = (1 << 10), // 0x00000400
-    OBJ_FLAG_SET_THROW_MATRIX_FROM_TRANSFORM   = (1 << 11), // 0x00000800
     OBJ_FLAG_1000                              = (1 << 12), // 0x00001000
     OBJ_FLAG_COMPUTE_ANGLE_TO_MARIO            = (1 << 13), // 0x00002000
     OBJ_FLAG_PERSISTENT_RESPAWN                = (1 << 14), // 0x00004000

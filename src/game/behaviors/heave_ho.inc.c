@@ -18,7 +18,7 @@ void bhv_heave_ho_throw_mario_loop(void) {
     o->oParentRelativePosY = -50.0f;
     o->oParentRelativePosZ = 0.0f;
 
-    o->oMoveAngleYaw = o->parentObj->oMoveAngleYaw;
+    o->oMoveAngleYaw = obj_yaw_in_frame(o, o->parentObj, o->parentObj->oMoveAngleYaw);
     switch (o->parentObj->oHeaveHoThrowState) {
         case 0:
             break;

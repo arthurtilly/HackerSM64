@@ -2,14 +2,13 @@
 
 static struct ObjectHitbox sWhirlpoolHitbox = {
     /* interactType:      */ INTERACT_WHIRLPOOL,
-    /* downOffset:        */ 0,
     /* damageOrCoinValue: */ 0,
     /* health:            */ 0,
     /* numLootCoins:      */ 0,
-    /* radius:            */ 200,
-    /* height:            */ 500,
+    /* radius:            */ 180,
+    /* offset:            */ 250,
     /* hurtboxRadius:     */ 0,
-    /* hurtboxHeight:     */ 0,
+    /* hurtboxOffset:     */ 0,
 };
 
 void bhv_whirlpool_init(void) {
@@ -21,6 +20,7 @@ void bhv_whirlpool_init(void) {
 
 void whirlpool_set_hitbox(void) {
     obj_set_hitbox(o, &sWhirlpoolHitbox);
+    o->interactionHalfHeight = o->hitboxOffset;
 }
 
 void whirpool_orient_graph(void) {
@@ -29,11 +29,7 @@ void whirpool_orient_graph(void) {
     f32 cosRoll = coss(o->oFaceAngleRoll);
     f32 sinRoll = sins(o->oFaceAngleRoll);
     Vec3f normal = { sinRoll * cosPitch, cosPitch * cosRoll, sinPitch };
-    Vec3f position;
-
-    vec3f_copy_y_off(position, &o->oPosVec, o->oGraphYOffset);
-    mtxf_align_terrain_normal(o->transform, normal, position, o->oFaceAngleYaw);
-    o->header.gfx.throwMatrix = &o->transform;
+    obj_align_to_normal(o, normal, o->oFaceAngleYaw);
 }
 
 void bhv_whirlpool_loop(void) {

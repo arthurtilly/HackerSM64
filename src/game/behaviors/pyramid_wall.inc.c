@@ -17,12 +17,12 @@ void bhv_ssl_moving_pyramid_wall_init(void) {
             break;
 
         case PYRAMID_WALL_BP_POSITION_MIDDLE:
-            o->oPosY -= 256.0f;
+            obj_add_up(o, &o->oPosVec, -256.0f);
             o->oTimer += 50;
             break;
 
         case PYRAMID_WALL_BP_POSITION_LOW:
-            o->oPosY -= 512.0f;
+            obj_add_up(o, &o->oPosVec, -512.0f);
             o->oAction = PYRAMID_WALL_ACT_MOVING_UP;
             break;
     }
@@ -49,5 +49,5 @@ void bhv_ssl_moving_pyramid_wall_loop(void) {
             break;
     }
 
-    o->oPosY += o->oVelY;
+    obj_add_up(o, &o->oPosVec, o->oVelY);
 }

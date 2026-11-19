@@ -4,7 +4,7 @@ void bhv_bubble_cannon_barrel_loop(void) {
     if (o->parentObj->oAction == 2) {
         obj_mark_for_deletion(o);
     } else {
-        o->oMoveAngleYaw = o->parentObj->oFaceAngleYaw;
+        o->oMoveAngleYaw = obj_yaw_in_frame(o, o->parentObj, o->parentObj->oFaceAngleYaw);
         o->oMoveAnglePitch = o->parentObj->oMoveAnglePitch + 0x4000;
         o->oFaceAnglePitch = o->parentObj->oMoveAnglePitch;
 
@@ -76,7 +76,7 @@ void water_bomb_cannon_act_2(void) {
 }
 
 void bhv_water_bomb_cannon_loop(void) {
-    cur_obj_push_mario_away_from_cylinder(220.0f, 300.0f);
+    cur_obj_push_mario_away_from_sphere(150.0f, 110.0f);
 
     switch (o->oAction) {
         case 0:

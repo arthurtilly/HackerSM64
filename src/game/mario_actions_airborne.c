@@ -28,7 +28,7 @@ void play_far_fall_sound(struct MarioState *m) {
     u32 action = m->action;
     if (!(action & ACT_FLAG_INVULNERABLE) && action != ACT_TWIRLING && action != ACT_FLYING
         && !(m->flags & MARIO_FALL_SOUND_PLAYED)) {
-        if (m->peakHeight - m->pos[1] > FALL_DAMAGE_HEIGHT_SMALL) {
+        if (m->peakHeight - obj_height(m->marioObj, m->pos) > FALL_DAMAGE_HEIGHT_SMALL) {
             play_sound(SOUND_MARIO_WAAAOOOW, m->marioObj->header.gfx.cameraToObject);
             m->flags |= MARIO_FALL_SOUND_PLAYED;
         }
@@ -64,7 +64,7 @@ s32 check_fall_damage(struct MarioState *m, u32 hardFallAction) {
     return FALSE;
 #endif
 
-    f32 fallHeight = m->peakHeight - m->pos[1];
+    f32 fallHeight = m->peakHeight - obj_height(m->marioObj, m->pos);
 
     f32 damageHeight = FALL_DAMAGE_HEIGHT_SMALL;
 
@@ -108,7 +108,7 @@ s32 should_get_stuck_in_ground(struct MarioState *m) {
 
     if (floor != NULL && (terrainType == TERRAIN_SNOW || terrainType == TERRAIN_SAND)
         && type != SURFACE_BURNING && SURFACE_IS_NOT_HARD(type)) {
-        if (!(floor->flags & SURFACE_FLAG_DYNAMIC) && m->peakHeight - m->pos[1] > 1000.0f && m->floorNormal.y >= COS30) {
+        if (!(floor->flags & SURFACE_FLAG_DYNAMIC) && m->peakHeight - obj_height(m->marioObj, m->pos) > 1000.0f && m->floorNormal.y >= COS30) {
             return TRUE;
         }
     }
@@ -134,7 +134,7 @@ s32 check_horizontal_wind(struct MarioState *m) {
     s16 pushAngle;
 
     if (m->floorType == SURFACE_HORIZONTAL_WIND) {
-        pushAngle = m->floor->force << 8;
+        pushAngle = obj_yaw_in_frame(m->marioObj, NULL, m->floor->force << 8);
 
         m->slideVelX += 1.2f * sins(pushAngle);
         m->slideVelZ += 1.2f * coss(pushAngle);
@@ -612,7 +612,7 @@ s32 act_riding_shell_air(struct MarioState *m) {
             break;
     }
 
-    m->marioObj->header.gfx.pos[1] += 42.0f;
+    obj_add_up(m->marioObj, m->marioObj->header.gfx.pos, 42.0f);
     return FALSE;
 }
 
@@ -859,9 +859,9 @@ s32 act_ground_pound(struct MarioState *m) {
     if (m->actionState == 0) {
         if (m->actionTimer < 10) {
             yOffset = 20 - 2 * m->actionTimer;
-            if (m->pos[1] + yOffset + 160.0f < m->ceilHeight) {
-                m->pos[1] += yOffset;
-                m->peakHeight = m->pos[1];
+            if (m->ceil == NULL || obj_height(m->marioObj, m->pos) + yOffset + 160.0f < m->ceilHeight) {
+                obj_add_up(m->marioObj, m->pos, yOffset);
+                m->peakHeight = obj_height(m->marioObj, m->pos);
                 vec3f_copy(m->marioObj->header.gfx.pos, m->pos);
             }
         }
@@ -1322,7 +1322,7 @@ s32 act_backward_rollout(struct MarioState *m) {
 }
 
 s32 act_butt_slide_air(struct MarioState *m) {
-    if (++(m->actionTimer) > 30 && m->pos[1] - m->floorHeight > 500.0f) {
+    if (++(m->actionTimer) > 30 && obj_height(m->marioObj, m->pos) - m->floorHeight > 500.0f) {
         return set_mario_action(m, ACT_FREEFALL, 1);
     }
 
@@ -1361,7 +1361,7 @@ s32 act_hold_butt_slide_air(struct MarioState *m) {
         return drop_and_set_mario_action(m, ACT_HOLD_FREEFALL, 1);
     }
 
-    if (++m->actionTimer > 30 && m->pos[1] - m->floorHeight > 500.0f) {
+    if (++m->actionTimer > 30 && obj_height(m->marioObj, m->pos) - m->floorHeight > 500.0f) {
         return set_mario_action(m, ACT_HOLD_FREEFALL, 1);
     }
 
@@ -1464,7 +1464,7 @@ s32 act_slide_kick(struct MarioState *m) {
         set_mario_animation(m, MARIO_ANIM_SLIDE_KICK);
     }
 
-    if (++(m->actionTimer) > 30 && m->pos[1] - m->floorHeight > 500.0f) {
+    if (++(m->actionTimer) > 30 && obj_height(m->marioObj, m->pos) - m->floorHeight > 500.0f) {
         return set_mario_action(m, ACT_FREEFALL, 2);
     }
 
@@ -1726,11 +1726,10 @@ s32 act_riding_hoot(struct MarioState *m) {
         return set_mario_action(m, ACT_FREEFALL, 0);
     }
 
-    m->pos[0] = m->usedObj->oPosX;
-    m->pos[1] = m->usedObj->oPosY - 92.5f;
-    m->pos[2] = m->usedObj->oPosZ;
+    vec3_copy(m->pos, &m->usedObj->oPosVec);
+    obj_add_up(m->usedObj, m->pos, -92.5f);
 
-    m->faceAngle[1] = 0x4000 - m->usedObj->oMoveAngleYaw;
+    m->faceAngle[1] = obj_yaw_in_frame(m->marioObj, m->usedObj, 0x4000 - m->usedObj->oMoveAngleYaw);
 
     if (m->actionState == ACT_STATE_RIDING_HOOT_GRABBING) {
         set_mario_animation(m, MARIO_ANIM_HANG_ON_CEILING);
@@ -1742,7 +1741,7 @@ s32 act_riding_hoot(struct MarioState *m) {
 
     vec3f_set(m->vel, 0.0f, 0.0f, 0.0f);
     vec3f_set(m->marioObj->header.gfx.pos, m->pos[0], m->pos[1], m->pos[2]);
-    vec3s_set(m->marioObj->header.gfx.angle, 0, 0x4000 - m->faceAngle[1], 0);
+    vec3s_set(m->marioObj->header.gfx.angle, 0, obj_yaw_in_frame(m->marioObj, m->usedObj, m->usedObj->oMoveAngleYaw), 0);
     return FALSE;
 }
 

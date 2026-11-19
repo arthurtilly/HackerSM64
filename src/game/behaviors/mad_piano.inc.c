@@ -2,14 +2,13 @@
 
 static struct ObjectHitbox sMadPianoHitbox = {
     /* interactType:      */ INTERACT_MR_BLIZZARD,
-    /* downOffset:        */ 0,
     /* damageOrCoinValue: */ 3,
     /* health:            */ 99,
     /* numLootCoins:      */ 0,
-    /* radius:            */ 200,
-    /* height:            */ 150,
-    /* hurtboxRadius:     */ 200,
-    /* hurtboxHeight:     */ 150,
+    /* radius:            */ 175,
+    /* offset:            */ 62,
+    /* hurtboxRadius:     */ 157,
+    /* hurtboxOffset:     */ 64,
 };
 
 static void mad_piano_act_wait(void) {
@@ -24,7 +23,7 @@ static void mad_piano_act_wait(void) {
         o->oTimer = 0;
     }
 
-    cur_obj_push_mario_away_from_cylinder(280.0f, 150.0f);
+    cur_obj_push_mario_away_from_sphere(210.0f, 75.0f);
 }
 
 static void mad_piano_act_attack(void) {

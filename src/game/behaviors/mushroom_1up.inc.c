@@ -19,7 +19,7 @@ void bhv_1up_interact(void) {
 
 void bhv_1up_common_init(void) {
     o->oMoveAnglePitch = -0x4000;
-    o->oWallHitboxRadius = o->hitboxRadius;
+    o->oWallHitboxRadius = 30.0f;
     o->oGravity = -3.0f;
     o->oBounciness = -0.5f;
     o->oBuoyancy = 3.0f;

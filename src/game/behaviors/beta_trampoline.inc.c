@@ -23,13 +23,13 @@ void bhv_beta_trampoline_spring_loop(void) {
     // Update to be 75 units under the trampoline top
     obj_copy_pos_and_angle(o, o->parentObj);
     obj_copy_graph_y_offset(o, o->parentObj);
-    o->oPosY -= 75.0f;
+    obj_add_up(o, &o->oPosVec, -75.0f);
 
     // If the trampoline top is above its original position,
     // scale the spring by (the displacement)/10 + 1.
     // For this to work correctly, the arbitrary value of 10
     // must be replaced with 150 (the height of the trampoline).
-    yDisplacement = o->oPosY - o->oHomeY;
+    yDisplacement = (obj_height(o, &o->oPosVec) - obj_height(o, &o->oHomeVec));
     if (yDisplacement >= 0) {
         yScale = yDisplacement / 150.0f + 1.0f;
     } else {
@@ -61,10 +61,10 @@ void bhv_beta_trampoline_top_loop(void) {
         struct Object *trampolinePart;
 
         trampolinePart = spawn_object(o, MODEL_TRAMPOLINE_CENTER, bhvBetaTrampolineSpring);
-        trampolinePart->oPosY -= 75.0f;
+        obj_add_up(trampolinePart, &trampolinePart->oPosVec, -75.0f);
 
         trampolinePart = spawn_object(o, MODEL_TRAMPOLINE_BASE, bhvStaticObject);
-        trampolinePart->oPosY -= 150.0f;
+        obj_add_up(trampolinePart, &trampolinePart->oPosVec, -150.0f);
     }
 
     // Update o->oBetaTrampolineMarioOnTrampoline, and reset
@@ -76,7 +76,7 @@ void bhv_beta_trampoline_top_loop(void) {
         o->oBetaTrampolineMarioOnTrampoline = TRUE;
     } else {
         o->oBetaTrampolineMarioOnTrampoline = FALSE;
-        o->oPosY = o->oHomeY;
+        obj_set_height(o, &o->oPosVec, obj_height(o, &o->oHomeVec));
     }
 
     // This function is from mario_step.c, and is empty.

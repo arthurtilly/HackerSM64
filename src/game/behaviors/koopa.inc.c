@@ -13,14 +13,13 @@
  */
 static struct ObjectHitbox sKoopaHitbox = {
     /* interactType:      */ INTERACT_KOOPA,
-    /* downOffset:        */ 0,
     /* damageOrCoinValue: */ 0,
     /* health:            */ 0,
     /* numLootCoins:      */ -1,
-    /* radius:            */ 60,
-    /* height:            */ 40,
-    /* hurtboxRadius:     */ 40,
-    /* hurtboxHeight:     */ 30,
+    /* radius:            */ 47,
+    /* offset:            */ 6,
+    /* hurtboxRadius:     */ 25,
+    /* hurtboxOffset:     */ 12,
 };
 
 /**
@@ -262,7 +261,7 @@ void shelled_koopa_attack_handler(s32 attackType) {
 
         // If attacked from the side, get knocked away from mario
         if (attackType != ATTACK_FROM_ABOVE && attackType != ATTACK_GROUND_POUND_OR_TWIRL) {
-            o->oMoveAngleYaw = obj_angle_to_object(gMarioObject, o);
+            o->oMoveAngleYaw = obj_angle_to_object(o, gMarioObject) + 0x8000;
         }
 
         cur_obj_set_model(MODEL_KOOPA_WITHOUT_SHELL);
@@ -531,8 +530,11 @@ static s32 koopa_the_quick_detect_bowling_ball(void) {
     struct Object *ball = cur_obj_find_nearest_object_with_behavior(bhvBowlingBall, &distToBall);
 
     if (ball != NULL) {
-        s16 angleToBall = obj_turn_toward_object(o, ball, O_MOVE_ANGLE_YAW_INDEX, 0);
-        f32 ballSpeedInKoopaRunDir = ball->oForwardVel * coss(ball->oMoveAngleYaw - o->oMoveAngleYaw);
+        s16 angleToBall = obj_angle_to_object(o, ball);
+        Vec3f runDir, ballDir;
+        obj_yaw_direction(o, runDir, o->oMoveAngleYaw);
+        obj_yaw_direction(ball, ballDir, ball->oMoveAngleYaw);
+        f32 ballSpeedInKoopaRunDir = ball->oForwardVel * vec3_dot(runDir, ballDir);
 
         if (abs_angle_diff(o->oMoveAngleYaw, angleToBall) < 0x4000) {
             // The ball is in front of ktq
@@ -577,7 +579,7 @@ static void koopa_the_quick_animate_footsteps(void) {
 static void koopa_the_quick_act_race(void) {
     if (obj_begin_race(FALSE)) {
         // Hitbox is slightly larger while racing
-        cur_obj_push_mario_away_from_cylinder(180.0f, 300.0f);
+        cur_obj_push_mario_away_from_sphere(113.0f, 100.0f);
 
         if (cur_obj_follow_path() == PATH_REACHED_END) {
             o->oAction = KOOPA_THE_QUICK_ACT_DECELERATE;
@@ -764,7 +766,7 @@ static void koopa_the_quick_update(void) {
         o->parentObj->oKoopaRaceEndpointKoopaFinished = TRUE;
     }
 
-    cur_obj_push_mario_away_from_cylinder(140.0f, 300.0f);
+    cur_obj_push_mario_away_from_sphere(75.0f, 95.0f);
     cur_obj_move_standard(-78);
 }
 

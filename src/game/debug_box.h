@@ -20,6 +20,7 @@ enum DebugBoxFlags {
     DEBUG_SHAPE_BOX      = (1 << 0), // 0x01
     DEBUG_SHAPE_CYLINDER = (1 << 1), // 0x02
     DEBUG_BOX_CLEAR      = (1 << 2), // 0x04
+    DEBUG_SHAPE_SPHERE   = (1 << 3),
 };
 
 extern u8 hitboxView;
@@ -29,6 +30,7 @@ extern void debug_box_input(void);
 void debug_box_color(u32 color);
 void debug_box(Vec3f center, Vec3f bounds, s32 type);
 void debug_box_rot(Vec3f center, Vec3f bounds, s16 yaw, s32 type);
+void debug_cylinder(Vec3f base, Vec3f bounds, const Vec3f up);
 
 void debug_box_pos(Vec3f pMin, Vec3f pMax, s32 type);
 void debug_box_pos_rot(Vec3f pMin, Vec3f pMax, s16 yaw, s32 type);

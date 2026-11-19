@@ -2,14 +2,13 @@
 
 struct ObjectHitbox sBreakableBoxSmallHitbox = {
     /* interactType:      */ INTERACT_GRABBABLE,
-    /* downOffset:        */ 20,
     /* damageOrCoinValue: */ 0,
     /* health:            */ 1,
     /* numLootCoins:      */ 0,
-    /* radius:            */ 150,
-    /* height:            */ 250,
-    /* hurtboxRadius:     */ 150,
-    /* hurtboxHeight:     */ 250,
+    /* radius:            */ 128,
+    /* offset:            */ 91,
+    /* hurtboxRadius:     */ 116,
+    /* hurtboxOffset:     */ 90,
 };
 
 void bhv_breakable_box_small_init(void) {
@@ -110,8 +109,7 @@ void breakable_box_small_get_thrown(void) {
     o->header.gfx.node.flags &= ~GRAPH_RENDER_INVISIBLE;
     o->oHeldState = HELD_FREE;
     o->oFlags &= ~OBJ_FLAG_SET_FACE_YAW_TO_MOVE_YAW;
-    o->oForwardVel = 40.0f;
-    o->oVelY = 20.0f;
+    cur_obj_set_throw_velocity(40.0f, 20.0f);
     o->oMoveFlags = 0;
     cur_obj_compute_vel_xz();
     o->oBreakableBoxSmallReleased = TRUE;

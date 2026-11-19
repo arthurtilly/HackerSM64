@@ -19,7 +19,7 @@ void bhv_wf_elevator_tower_platform_loop(void) {
             if (o->oTimer > 140) {
                 o->oAction++;
             } else {
-                o->oPosY += 5.0f;
+                obj_add_up(o, &o->oPosVec, 5.0f);
             }
             break;
 
@@ -34,7 +34,7 @@ void bhv_wf_elevator_tower_platform_loop(void) {
             if (o->oTimer > 140) {
                 o->oAction = 0;
             } else {
-                o->oPosY -= 5.0f;
+                obj_add_up(o, &o->oPosVec, -5.0f);
             }
             break;
     }
@@ -65,8 +65,7 @@ void bhv_wf_sliding_tower_platform_loop(void) {
 
     cur_obj_compute_vel_xz();
 
-    o->oPosX += o->oVelX;
-    o->oPosZ += o->oVelZ;
+    obj_offset_local(o, &o->oPosVec, &o->oPosVec, o->oVelX, 0.0f, o->oVelZ);
 
     if (o->parentObj->oAction == 3) {
         obj_mark_for_deletion(o);
@@ -79,9 +78,8 @@ void spawn_and_init_wf_platforms(s16 a, const BehaviorScript *bhv) {
     s16 yaw = ((o->oPlatformSpawnerWFTowerPlatformNum * o->oPlatformSpawnerWFTowerDYaw) + o->oPlatformSpawnerWFTowerYawOffset);
 
     platform->oMoveAngleYaw = yaw;
-    platform->oPosX += o->oPlatformSpawnerWFTowerRadius * sins(yaw);
-    platform->oPosY += 100 * o->oPlatformSpawnerWFTowerPlatformNum;
-    platform->oPosZ += o->oPlatformSpawnerWFTowerRadius * coss(yaw);
+    obj_offset_forward(o, &platform->oPosVec, &o->oPosVec, yaw, o->oPlatformSpawnerWFTowerRadius,
+                       100 * o->oPlatformSpawnerWFTowerPlatformNum);
     platform->oPlatformWFTowerMoveDistance = o->oPlatformSpawnerWFTowerMoveDistance;
     platform->oPlatformWFTowerForwardVel = o->oPlatformSpawnerWFTowerForwardVel;
 

@@ -11,9 +11,9 @@ void grindel_thwomp_act_on_ground(void) {
 
 void grindel_thwomp_act_falling(void) {
     o->oVelY += -4.0f;
-    o->oPosY += o->oVelY;
-    if (o->oPosY < o->oHomeY) {
-        o->oPosY = o->oHomeY;
+    obj_add_up(o, &o->oPosVec, o->oVelY);
+    if (obj_height(o, &o->oPosVec) < obj_height(o, &o->oHomeVec)) {
+        obj_set_height(o, &o->oPosVec, obj_height(o, &o->oHomeVec));
         o->oVelY = 0.0f;
         o->oAction = GRINDEL_THWOMP_ACT_LAND;
     }
@@ -41,9 +41,9 @@ void grindel_thwomp_act_floating(void) {
 void grindel_thwomp_act_rising(void) {
     if (o->oBehParams2ndByte + 40 < o->oTimer) {
         o->oAction = GRINDEL_THWOMP_ACT_FLOATING;
-        o->oPosY += 5.0f;
+        obj_add_up(o, &o->oPosVec, 5.0f);
     } else {
-        o->oPosY += 10.0f;
+        obj_add_up(o, &o->oPosVec, 10.0f);
     }
 }
 

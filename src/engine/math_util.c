@@ -23,6 +23,7 @@ Vec3f gVec3fOne  = {  1.0f,  1.0f,  1.0f };
 Vec3s gVec3sZero = {     0,     0,     0 };
 Vec3i gVec3iZero = {     0,     0,     0 };
 Vec3s gVec3sOne  = {     1,     1,     1 };
+const Quat gQuatIdentity = { 0, 0, 0, 1 };
 
 static u16 gRandomSeed16;
 
@@ -115,6 +116,103 @@ void mtxf_translate(Mat4 dest, Vec3f b) {
         *((u32 *) pen) = FLOAT_ONE;
     }
     vec3f_copy(&dest[3][0], &b[0]);
+}
+
+// a * b applies b first. All rotations use the same axes as the object matrices.
+void quat_mul(Quat *dest, const Quat *a, const Quat *b) {
+    *dest = (Quat) {
+        a->w * b->x + a->x * b->w + a->y * b->z - a->z * b->y,
+        a->w * b->y - a->x * b->z + a->y * b->w + a->z * b->x,
+        a->w * b->z + a->x * b->y - a->y * b->x + a->z * b->w,
+        a->w * b->w - a->x * b->x - a->y * b->y - a->z * b->z,
+    };
+}
+
+void quat_normalize(Quat *q) {
+    f32 inv = 1.0f / sqrtf(sqr(q->x) + sqr(q->y) + sqr(q->z) + sqr(q->w));
+    q->x *= inv;
+    q->y *= inv;
+    q->z *= inv;
+    q->w *= inv;
+}
+
+void quat_from_zxy(Quat *dest, const Vec3s angle) {
+    if (angle[0] == 0 && angle[2] == 0) {
+        quat_from_yaw(dest, angle[1]);
+        return;
+    }
+    f32 sx = sins(angle[0] >> 1), cx = coss(angle[0] >> 1);
+    f32 sy = sins(angle[1] >> 1), cy = coss(angle[1] >> 1);
+    f32 sz = sins(angle[2] >> 1), cz = coss(angle[2] >> 1);
+    f32 x = sx * cz, y = sx * sz, z = cx * sz, w = cx * cz;
+    *dest = (Quat) { cy * x + sy * z, sy * w - cy * y, cy * z - sy * x, cy * w + sy * y };
+}
+
+// Shortest rotation between unit directions. A half turn needs a perpendicular axis.
+void quat_from_to(Quat *dest, const Vec3f from, const Vec3f to, const Vec3f halfTurnAxis) {
+    Vec3f axis;
+    vec3_cross(axis, from, to);
+    f32 dot = vec3_dot(from, to);
+    if (dot >= 0.0f) {
+        f32 w = sqrtf(0.5f * (1.0f + dot));
+        vec3_scale(axis, 0.5f / w);
+        *dest = (Quat) { axis[0], axis[1], axis[2], w };
+    } else {
+        f32 length = vec3_mag(axis);
+        if (length < NEAR_ZERO) {
+            *dest = (Quat) { halfTurnAxis[0], halfTurnAxis[1], halfTurnAxis[2], 0 };
+        } else {
+            f32 sinHalf = sqrtf(0.5f * (1.0f - dot));
+            vec3_scale(axis, sinHalf / length);
+            *dest = (Quat) { axis[0], axis[1], axis[2], length / (2.0f * sinHalf) };
+        }
+    }
+}
+
+void quat_rotate_vec3f(Vec3f dest, const Quat *q, const Vec3f v) {
+    Vec3f axis = { q->x, q->y, q->z }, t, cross;
+    vec3_cross(t, axis, v);
+    vec3_scale(t, 2.0f);
+    vec3_cross(cross, axis, t);
+    dest[0] = v[0] + q->w * t[0] + cross[0];
+    dest[1] = v[1] + q->w * t[1] + cross[1];
+    dest[2] = v[2] + q->w * t[2] + cross[2];
+}
+
+// Project the desired heading onto the tangent plane of a unit normal.
+void quat_from_up_forward(Quat *dest, const Vec3f up, const Vec3f forward) {
+    Vec3f right, front;
+    vec3_cross(right, up, forward);
+    if (vec3_sumsq(right) < 0.000001f) {
+        vec3_cross(right, up, (absf(up[0]) < 0.9f ? gVec3fX : gVec3fZ));
+    }
+    vec3_normalize(right);
+    vec3_cross(front, right, up);
+
+    // Choose a large component before taking the square root, including at 180 degrees.
+    f32 trace = right[0] + up[1] + front[2];
+    if (trace > 0.0f) {
+        *dest = (Quat) { up[2] - front[1], front[0] - right[2], right[1] - up[0], 1.0f + trace };
+    } else if (right[0] > up[1] && right[0] > front[2]) {
+        *dest = (Quat) { 1.0f + 2.0f * right[0] - trace, right[1] + up[0], right[2] + front[0], up[2] - front[1] };
+    } else if (up[1] > front[2]) {
+        *dest = (Quat) { right[1] + up[0], 1.0f + 2.0f * up[1] - trace, up[2] + front[1], front[0] - right[2] };
+    } else {
+        *dest = (Quat) { right[2] + front[0], up[2] + front[1], 1.0f + 2.0f * front[2] - trace, right[1] - up[0] };
+    }
+    quat_normalize(dest);
+}
+
+void mtxf_from_quat(Mat4 dest, const Quat *q, const Vec3f pos) {
+    f32 x = q->x * 2.0f, y = q->y * 2.0f, z = q->z * 2.0f;
+    f32 xx = q->x * x, xy = q->x * y, xz = q->x * z;
+    f32 yy = q->y * y, yz = q->y * z, zz = q->z * z;
+    f32 wx = q->w * x, wy = q->w * y, wz = q->w * z;
+    vec3_set(dest[0], 1.0f - yy - zz, xy + wz, xz - wy);
+    vec3_set(dest[1], xy - wz, 1.0f - xx - zz, yz + wx);
+    vec3_set(dest[2], xz + wy, yz - wx, 1.0f - xx - yy);
+    vec3_copy(dest[3], pos);
+    MTXF_END(dest);
 }
 
 /// Build a matrix that rotates around the z axis, then the x axis, then the y axis, and then translates.
@@ -339,54 +437,21 @@ void mtxf_billboard_generic(Mat4 dest, Mat4 mtx, Vec3f camera, Vec3f axis, Vec3f
     dest[3][3] = 1.0f;
 }
 
-/**
- * Mostly the same as 'mtxf_align_terrain_normal', but also applies a scale and multiplication.
- * 'upDir' is the terrain normal
- * 'pos' is the object's position in the world
- * 'scale' is the scale of the shadow
- * 'yaw' is the angle which it should face
- */
-void mtxf_shadow(Mat4 dest, Vec3f upDir, Vec3f pos, Vec3f scale, s16 yaw) {
+void mtxf_shadow(Mat4 dest, const Vec3f normal, const Vec3f down, const Vec3f forward,
+                 const Vec3f pos, const Vec3f scale) {
     PUPPYPRINT_ADD_COUNTER(gPuppyCallCounter.matrix);
-    Vec3f lateralDir;
-    Vec3f leftDir;
-    Vec3f forwardDir;
-    vec3f_set(lateralDir, sins(yaw), 0.0f, coss(yaw));
-    vec3f_normalize(upDir);
-    vec3f_cross(leftDir, upDir, lateralDir);
-    vec3f_normalize(leftDir);
-    vec3f_cross(forwardDir, leftDir, upDir);
-    vec3f_normalize(forwardDir);
-
-    vec3f_prod(dest[0], leftDir, scale);
-    vec3f_prod(dest[1], upDir, scale);
-    vec3f_prod(dest[2], forwardDir, scale);
-    vec3f_copy(dest[3], pos);
-    MTXF_END(dest);
-}
-
-/**
- * Set 'dest' to a transformation matrix that aligns an object with the terrain
- * based on the normal. Used for enemies.
- * 'upDir' is the terrain normal
- * 'yaw' is the angle which it should face
- * 'pos' is the object's position in the world
- */
-void mtxf_align_terrain_normal(Mat4 dest, Vec3f upDir, Vec3f pos, s16 yaw) {
-    PUPPYPRINT_ADD_COUNTER(gPuppyCallCounter.matrix);
-    Vec3f lateralDir;
-    Vec3f leftDir;
-    Vec3f forwardDir;
-    vec3f_set(lateralDir, sins(yaw), 0.0f, coss(yaw));
-    vec3f_normalize(upDir);
-    vec3f_cross(leftDir, upDir, lateralDir);
-    vec3f_normalize(leftDir);
-    vec3f_cross(forwardDir, leftDir, upDir);
-    vec3f_normalize(forwardDir);
-    vec3f_copy(dest[0], leftDir);
-    vec3f_copy(dest[1], upDir);
-    vec3f_copy(dest[2], forwardDir);
-    vec3f_copy(dest[3], pos);
+    // Rotate the heading by the shortest rotation from the actor's up to the surface normal.
+    vec3_copy(dest[2], forward);
+    f32 tilt = vec3_dot(forward, normal);
+    if (tilt != 0.0f) {
+        tilt /= 1.0f - vec3_dot(down, normal);
+        for (s32 i = 0; i < 3; i++) dest[2][i] -= tilt * (normal[i] - down[i]);
+    }
+    vec3_cross(dest[0], normal, dest[2]);
+    vec3_scale(dest[0], scale[0]);
+    vec3_scale_dest(dest[1], normal, scale[1]);
+    vec3_scale(dest[2], scale[2]);
+    vec3_copy(dest[3], pos);
     MTXF_END(dest);
 }
 

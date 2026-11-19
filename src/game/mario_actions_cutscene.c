@@ -473,8 +473,8 @@ s32 act_reading_automatic_dialog(struct MarioState *m) {
 }
 
 s32 act_reading_sign(struct MarioState *m) {
-    if (m->floor != NULL && m->pos[1] < m->floorHeight + m->usedObj->hitboxHeight) {
-        m->pos[1] = m->floorHeight; // Fixes sign on slopes
+    if (m->floor != NULL && obj_height(m->marioObj, m->pos) < m->floorHeight + 80.0f) {
+        obj_set_height(m->marioObj, m->pos, m->floorHeight); // Fixes sign on slopes
     }
 
     struct Object *marioObj = m->marioObj;
@@ -492,8 +492,8 @@ s32 act_reading_sign(struct MarioState *m) {
             // intentional fallthrough
         case ACT_STATE_READING_SIGN_TURN_TOWARD_SIGN:
             m->faceAngle[1] += marioObj->oMarioReadingSignDYaw  / 11;
-            m->pos[0] += marioObj->oMarioReadingSignDPosX / 11.0f;
-            m->pos[2] += marioObj->oMarioReadingSignDPosZ / 11.0f;
+            obj_offset_local(marioObj, m->pos, m->pos, marioObj->oMarioReadingSignDPosX / 11.0f, 0.0f,
+                             marioObj->oMarioReadingSignDPosZ / 11.0f);
             // create the text box
             if (m->actionTimer++ == 10) {
                 create_dialog_inverted_box(m->usedObj->oBehParams2ndByte);
@@ -515,8 +515,7 @@ s32 act_reading_sign(struct MarioState *m) {
 }
 
 s32 act_debug_free_move(struct MarioState *m) {
-    struct SurfaceContact wall;
-    struct Surface *floor, *ceil;
+    struct SurfaceContact wall, floor, ceil;
     Vec3f pos;
 
     if (gPlayer1Controller->buttonPressed & L_TRIG) {
@@ -539,10 +538,10 @@ s32 act_debug_free_move(struct MarioState *m) {
     ) {
 #endif // USE_PROFILER
         if (gPlayer1Controller->buttonDown & U_JPAD) {
-            pos[1] += 16.0f * speed;
+            obj_add_up(m->marioObj, pos, 16.0f * speed);
         }
         if (gPlayer1Controller->buttonDown & D_JPAD) {
-            pos[1] -= 16.0f * speed;
+            obj_add_up(m->marioObj, pos, -16.0f * speed);
         }
 #ifdef USE_PROFILER
     }
@@ -559,7 +558,7 @@ s32 act_debug_free_move(struct MarioState *m) {
         m->input &= ~INPUT_A_PRESSED;
         if (m->pos[1] <= (m->waterLevel - 100)) {
             return set_mario_action(m, ACT_WATER_IDLE, 0);
-        } else if (m->floor != NULL && m->pos[1] <= m->floorHeight) {
+        } else if (m->floor != NULL && obj_height(m->marioObj, m->pos) <= m->floorHeight) {
             return set_mario_action(m, ACT_IDLE, 0);
         } else {
             // slight upwards boost to get you some hover time
@@ -571,24 +570,19 @@ s32 act_debug_free_move(struct MarioState *m) {
 
     if (m->intendedMag > 0) {
         speed *= m->intendedMag * 2.0f;
-        pos[0] += speed * sins(m->intendedYaw);
-        pos[2] += speed * coss(m->intendedYaw);
+        obj_offset_forward(m->marioObj, pos, pos, m->intendedYaw, speed, 0.0f);
     }
 
-    resolve_wall_sphere(pos, gVec3fY, 60.0f, 50.0f, WALL_KICK_MAX_UP, &wall);
+    resolve_actor_wall(m->marioObj, pos, 60.0f, 50.0f, WALL_KICK_MAX_UP, &wall);
     set_mario_wall(m, &wall);
     if (is_outside_level_bounds(pos[0], pos[2])) return FALSE;
 
-    f32 floorHeight = find_floor(pos[0], pos[1], pos[2], &floor);
-    f32 ceilHeight = find_mario_ceil(pos, floorHeight, &ceil);
+    f32 floorHeight = find_actor_floor(m->marioObj, pos, 0.0f, &floor);
+    f32 ceilHeight = find_actor_ceil(m->marioObj, pos, floorHeight, 160.0f, &ceil);
 
-    if (floor == NULL || ceil == NULL || ceilHeight - floorHeight >= 160.0f) {
-        if (floor != NULL && pos[1] < floorHeight) {
-            pos[1] = floorHeight;
-        }
-        if (ceil != NULL && pos[1] + 160.0f > ceilHeight) {
-            pos[1] = ceilHeight - 160.0f;
-        }
+    if (!floor.surface || !ceil.surface || ceilHeight - floorHeight >= 160.0f) {
+        if (floor.surface && obj_height(m->marioObj, pos) < floorHeight) obj_set_height(m->marioObj, pos, floorHeight);
+        if (ceil.surface && obj_height(m->marioObj, pos) + 160.0f > ceilHeight) obj_set_height(m->marioObj, pos, ceilHeight - 160.0f);
         vec3f_copy(m->pos, pos);
     }
 
@@ -661,7 +655,7 @@ void general_star_dance_handler(struct MarioState *m, s32 isInWater) {
 }
 
 s32 act_star_dance(struct MarioState *m) {
-    m->faceAngle[1] = m->area->camera->yaw;
+    m->faceAngle[1] = obj_yaw_in_frame(m->marioObj, NULL, m->area->camera->yaw);
     set_mario_animation(m, m->actionState == ACT_STATE_STAR_DANCE_RETURN ? MARIO_ANIM_RETURN_FROM_STAR_DANCE
                                                                          : MARIO_ANIM_STAR_DANCE);
     general_star_dance_handler(m, FALSE);
@@ -673,7 +667,7 @@ s32 act_star_dance(struct MarioState *m) {
 }
 
 s32 act_star_dance_water(struct MarioState *m) {
-    m->faceAngle[1] = m->area->camera->yaw;
+    m->faceAngle[1] = obj_yaw_in_frame(m->marioObj, NULL, m->area->camera->yaw);
     set_mario_animation(m, m->actionState == ACT_STATE_STAR_DANCE_RETURN ? MARIO_ANIM_RETURN_FROM_WATER_STAR_DANCE
                                                                          : MARIO_ANIM_WATER_STAR_DANCE);
     vec3f_copy(m->marioObj->header.gfx.pos, m->pos);
@@ -802,10 +796,11 @@ s32 launch_mario_until_land(struct MarioState *m, s32 endAction, s32 animation, 
 }
 
 s32 act_unlocking_key_door(struct MarioState *m) {
-    m->faceAngle[1] = m->usedObj->oMoveAngleYaw;
+    m->faceAngle[1] = obj_yaw_in_frame(m->marioObj, m->usedObj, m->usedObj->oMoveAngleYaw);
 
-    m->pos[0] = m->usedObj->oPosX + coss(m->faceAngle[1]) * 75.0f;
-    m->pos[2] = m->usedObj->oPosZ + sins(m->faceAngle[1]) * 75.0f;
+    f32 height = obj_height(m->marioObj, m->pos);
+    obj_offset_forward(m->usedObj, m->pos, &m->usedObj->oPosVec, 0x4000 - m->usedObj->oMoveAngleYaw, 75.0f, 0.0f);
+    obj_set_height(m->marioObj, m->pos, height);
 
     if (m->actionArg & WARP_FLAG_DOOR_FLIP_MARIO) {
         m->faceAngle[1] += 0x8000;
@@ -846,12 +841,14 @@ s32 act_unlocking_key_door(struct MarioState *m) {
 s32 act_unlocking_star_door(struct MarioState *m) {
     switch (m->actionState) {
         case ACT_STATE_UNLOCKING_STAR_DOOR_MOVE_POS:
-            m->faceAngle[1] = m->usedObj->oMoveAngleYaw;
+            m->faceAngle[1] = obj_yaw_in_frame(m->marioObj, m->usedObj, m->usedObj->oMoveAngleYaw);
             if (m->actionArg & WARP_FLAG_DOOR_FLIP_MARIO) {
                 m->faceAngle[1] += 0x8000;
             }
-            m->marioObj->oMarioReadingSignDPosX = m->pos[0];
-            m->marioObj->oMarioReadingSignDPosZ = m->pos[2];
+            Vec3f local;
+            obj_world_to_local(m->marioObj, local, m->pos);
+            m->marioObj->oMarioReadingSignDPosX = local[0];
+            m->marioObj->oMarioReadingSignDPosZ = local[2];
             set_mario_animation(m, MARIO_ANIM_SUMMON_STAR);
             m->actionState = ACT_STATE_UNLOCKING_STAR_DOOR_SUMMON_STAR;
             break;
@@ -875,8 +872,8 @@ s32 act_unlocking_star_door(struct MarioState *m) {
             break;
     }
 
-    m->pos[0] = m->marioObj->oMarioReadingSignDPosX;
-    m->pos[2] = m->marioObj->oMarioReadingSignDPosZ;
+    Vec3f localPos = { m->marioObj->oMarioReadingSignDPosX, obj_height(m->marioObj, m->pos), m->marioObj->oMarioReadingSignDPosZ };
+    obj_local_to_world(m->marioObj, m->pos, localPos);
 
     update_mario_pos_for_anim(m);
     stop_and_set_height_to_floor(m);
@@ -885,8 +882,7 @@ s32 act_unlocking_star_door(struct MarioState *m) {
 }
 
 s32 act_entering_star_door(struct MarioState *m) {
-    f32 targetDX;
-    f32 targetDZ;
+    Vec3f target;
     s16 targetAngle;
 
     if (m->actionTimer++ == 0) {
@@ -898,16 +894,12 @@ s32 act_entering_star_door(struct MarioState *m) {
             targetAngle += 0x5556; // ~120 degrees / 1/3 rot (total 150d / 5/12)
         }
 
-        // targetDX and targetDZ are the offsets to add to Mario's position to
-        // have Mario stand 150 units in front of the door
-
-        targetDX = m->usedObj->oPosX + 150.0f * sins(targetAngle) - m->pos[0];
-        targetDZ = m->usedObj->oPosZ + 150.0f * coss(targetAngle) - m->pos[2];
-
-        m->marioObj->oMarioReadingSignDPosX = targetDX / 20.0f;
-        m->marioObj->oMarioReadingSignDPosZ = targetDZ / 20.0f;
-
-        m->faceAngle[1] = atan2s(targetDZ, targetDX);
+        obj_offset_forward(m->usedObj, target, &m->usedObj->oPosVec, targetAngle, 150.0f, 0.0f);
+        vec3_sub(target, m->pos);
+        obj_world_to_local(m->marioObj, target, target);
+        m->marioObj->oMarioReadingSignDPosX = target[0] / 20.0f;
+        m->marioObj->oMarioReadingSignDPosZ = target[2] / 20.0f;
+        m->faceAngle[1] = atan2s(target[2], target[0]);
     }
 
     // set Mario's animation
@@ -917,21 +909,19 @@ s32 act_entering_star_door(struct MarioState *m) {
 
     // go through door? for 20 frames
     else if (m->actionTimer < 35) {
-        m->pos[0] += m->marioObj->oMarioReadingSignDPosX;
-        m->pos[2] += m->marioObj->oMarioReadingSignDPosZ;
+        obj_offset_local(m->marioObj, m->pos, m->pos, m->marioObj->oMarioReadingSignDPosX, 0.0f, m->marioObj->oMarioReadingSignDPosZ);
 
         set_mario_anim_with_accel(m, MARIO_ANIM_WALKING, 0x00028000);
     }
 
     else {
-        m->faceAngle[1] = m->usedObj->oMoveAngleYaw;
+        m->faceAngle[1] = obj_yaw_in_frame(m->marioObj, m->usedObj, m->usedObj->oMoveAngleYaw);
 
         if (m->actionArg & WARP_FLAG_DOOR_FLIP_MARIO) {
             m->faceAngle[1] += 0x8000;
         }
 
-        m->pos[0] += 12.0f * sins(m->faceAngle[1]);
-        m->pos[2] += 12.0f * coss(m->faceAngle[1]);
+        obj_offset_forward(m->marioObj, m->pos, m->pos, m->faceAngle[1], 12.0f, 0.0f);
 
         set_mario_anim_with_accel(m, MARIO_ANIM_WALKING, 0x00028000);
     }
@@ -955,7 +945,7 @@ s32 act_going_through_door(struct MarioState *m) {
             set_mario_animation(m, MARIO_ANIM_PUSH_DOOR_WALK_IN);
         }
     }
-    m->faceAngle[1] = m->usedObj->oMoveAngleYaw;
+    m->faceAngle[1] = obj_yaw_in_frame(m->marioObj, m->usedObj, m->usedObj->oMoveAngleYaw);
     m->pos[0] = m->usedObj->oPosX;
     m->pos[2] = m->usedObj->oPosZ;
 
@@ -1046,7 +1036,7 @@ s32 act_spawn_spin_airborne(struct MarioState *m) {
     }
 
     // is 300 units above floor, spin and play woosh sounds
-    if (m->actionState == ACT_STATE_SPAWN_SPIN_AIRBORNE_SPINNING && m->pos[1] - m->floorHeight > 300.0f) {
+    if (m->actionState == ACT_STATE_SPAWN_SPIN_AIRBORNE_SPINNING && obj_height(m->marioObj, m->pos) - m->floorHeight > 300.0f) {
         if (set_mario_animation(m, MARIO_ANIM_FORWARD_SPINNING) == 0) { // first anim frame
             play_sound(SOUND_ACTION_SPIN, m->marioObj->header.gfx.cameraToObject);
         }
@@ -1335,7 +1325,7 @@ s32 act_bbh_enter_spin(struct MarioState *m) {
 
     switch (m->actionState) {
         case ACT_STATE_BBH_ENTER_SPIN_SET_Y_VEL:
-            floorDist = 512.0f - (m->pos[1] - m->floorHeight);
+            floorDist = 512.0f - (obj_height(m->marioObj, m->pos) - m->floorHeight);
             m->vel[1] = floorDist > 0 ? sqrtf(4.0f * floorDist + 1.0f) - 1.0f : 2.0f;
 
             m->actionState = ACT_STATE_BBH_ENTER_SPIN_SPINNING;
@@ -1475,7 +1465,7 @@ s32 act_teleport_fade_in(struct MarioState *m) {
         }
     }
 
-    if (m->floor != NULL) m->pos[1] = m->floorHeight;
+    if (m->floor != NULL) obj_set_height(m->marioObj, m->pos, m->floorHeight);
     stop_and_set_height_to_floor(m);
 
     return FALSE;
@@ -1572,7 +1562,7 @@ s32 act_squished(struct MarioState *m) {
         underSteepSurf = TRUE;
     }
     // steep ceiling
-    if (m->ceil != NULL && -0.5f < m->ceil->normal.y) {
+    if (m->ceil != NULL && -0.5f < obj_normal_up(m->marioObj, m->ceil->normal)) {
         surfAngle = m->ceilYaw;
         underSteepSurf = TRUE;
     }

@@ -2,14 +2,13 @@
 
 struct ObjectHitbox sSpindriftHitbox = {
     /* interactType:      */ INTERACT_BOUNCE_TOP,
-    /* downOffset:        */ 0,
     /* damageOrCoinValue: */ 2,
     /* health:            */ 1,
     /* numLootCoins:      */ 3,
-    /* radius:            */ 90,
-    /* height:            */ 80,
-    /* hurtboxRadius:     */ 80,
-    /* hurtboxHeight:     */ 70,
+    /* radius:            */ 68,
+    /* offset:            */ 32,
+    /* hurtboxRadius:     */ 55,
+    /* hurtboxOffset:     */ 32,
 };
 
 void bhv_spindrift_loop(void) {

@@ -9,7 +9,7 @@
 
 void bhv_beta_moving_flames_spawn_loop(void) {
     o->oDistanceToMario = lateral_dist_between_objects(o, gMarioObject);
-    o->oPosY -= 100.0f;
+    obj_add_up(o, &o->oPosVec, -100.0f);
 
     switch (o->oAction) {
         case 0:

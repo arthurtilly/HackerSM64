@@ -11,6 +11,7 @@
 #include "game/puppyprint.h"
 
 static ALWAYS_INLINE s32 accepts_surface(const struct Surface *s, s32 flags) {
+    if (flags & COLLISION_FLAG_WATER_ONLY) return s->type == SURFACE_NEW_WATER;
     if (SURFACE_IS_NEW_WATER(s->type)) return FALSE;
     if (s->type == SURFACE_INTANGIBLE && !(flags & COLLISION_FLAG_INCLUDE_INTANGIBLE)) return FALSE;
     return (flags & COLLISION_FLAG_CAMERA) ? !(s->flags & SURFACE_FLAG_NO_CAM_COLLISION)
@@ -103,7 +104,7 @@ f32 collision_raycast(const Vec3f origin, const Vec3f dir, f32 length, f32 minFa
     PUPPYPRINT_ADD_COUNTER(gPuppyCallCounter.collision_raycast);
     PUPPYPRINT_GET_SNAPSHOT();
     struct Surface *nearest = NULL;
-    if (length <= 0.0f) goto done;
+    if (length < 0.0f) goto done;
     if (dir[0] == 0.0f && dir[2] == 0.0f) {
         if (dir[1] == 0.0f) goto done;
         f32 h = vertical_ray(origin[0], origin[1], origin[2], origin[1] + dir[1] * length,
@@ -170,9 +171,16 @@ f32 find_floor(f32 x, f32 y, f32 z, struct Surface **floor) {
     return cast_floor(x, y, z, gCollisionFlags, floor);
 }
 
-f32 find_floor_hit(f32 x, f32 y, f32 z, struct SurfaceContact *hit) {
+f32 find_actor_floor(const struct Object *obj, const Vec3f pos, f32 offset, struct SurfaceContact *hit) {
+    if (obj->gravityDir[1] != -1.0f) {
+        Vec3f origin;
+        vec3_copy(origin, pos);
+        obj_add_up(obj, origin, offset + FIND_FLOOR_BUFFER);
+        f32 distance = collision_raycast(origin, obj->gravityDir, LEVEL_RAY_LENGTH, 0.0f, gCollisionFlags, hit);
+        return distance < 0.0f ? FLOOR_LOWER_LIMIT : obj_height(obj, origin) - distance;
+    }
     struct Surface *source;
-    f32 height = cast_floor(x, y, z, gCollisionFlags, &source);
+    f32 height = cast_floor(pos[0], pos[1] + offset, pos[2], gCollisionFlags, &source);
     set_contact(hit, source);
     return height;
 }
@@ -197,8 +205,17 @@ f32 find_ceil(f32 x, f32 y, f32 z, struct Surface **ceil) {
     return cast_ceil(x, y, z, CELL_HEIGHT_LIMIT, ceil);
 }
 
-f32 find_actor_ceil(const Vec3f pos, f32 floorHeight, f32 clearance, struct SurfaceContact *hit) {
-    f32 base = MAX(pos[1], floorHeight);
+f32 find_actor_ceil(const struct Object *obj, const Vec3f pos, f32 floorHeight, f32 clearance, struct SurfaceContact *hit) {
+    f32 heightHere = obj_height(obj, pos);
+    f32 base = floorHeight == FLOOR_LOWER_LIMIT ? heightHere : MAX(heightHere, floorHeight);
+    if (obj->gravityDir[1] != -1.0f) {
+        Vec3f origin, up;
+        vec3_copy(origin, pos);
+        obj_add_up(obj, origin, base + 3.0f - heightHere);
+        vec3_scale_dest(up, obj->gravityDir, -1.0f);
+        f32 distance = collision_raycast(origin, up, clearance - 3.0f, WALL_MAX_UP, gCollisionFlags, hit);
+        return distance < 0.0f ? CELL_HEIGHT_LIMIT : base + 3.0f + distance;
+    }
     struct Surface *source;
     f32 height = cast_ceil(pos[0], base + 3.0f, pos[2], base + clearance, &source);
     set_contact(hit, source);
@@ -467,8 +484,7 @@ s32 get_room_at_pos(f32 x, f32 y, f32 z) {
 /**
  * Find the highest water floor under a given position and return the height.
  */
-static f32 find_water_floor(s32 x, s32 y, s32 z, struct Surface **pfloor) {
-    *pfloor = NULL;
+static f32 find_water_floor(s32 x, s32 y, s32 z) {
     if (!gStaticSurfaceIndex.hasWater || is_outside_level_bounds(x, z)) return FLOOR_LOWER_LIMIT;
 
     struct SurfaceBounds bounds = { { x, y + FIND_FLOOR_BUFFER, z }, { x, S32_MAX, z } };
@@ -492,7 +508,6 @@ static f32 find_water_floor(s32 x, s32 y, s32 z, struct Surface **pfloor) {
         if (!inside_projection(surf, 2, 0, z, x, surf->normal.y)) continue;
         f32 height = get_surface_height_at_location(x, z, surf);
         if (height > limit || height <= top) continue;
-        *pfloor = surf;
         top = height;
         bounds.min[1] = top;
     }
@@ -506,42 +521,37 @@ static f32 find_water_floor(s32 x, s32 y, s32 z, struct Surface **pfloor) {
  *               ENVIRONMENTAL BOXES              *
  **************************************************/
 
-/**
- * Finds the height of water at a given location.
- */
-s32 find_water_level_and_floor(s32 x, s32 y, s32 z, struct Surface **pfloor) {
-    s32 val;
-    s32 loX, hiX, loZ, hiZ;
-    TerrainData *p = gEnvironmentRegions;
-    struct Surface *floor = NULL;
+// Return the distance to the nearest water surface facing the ray, or -1 on a miss.
+f32 raycast_water_surface(const Vec3f origin, const Vec3f dir, f32 length, Vec3f normal) {
+    if (length < 0.0f) return -1.0f;
     PUPPYPRINT_ADD_COUNTER(gPuppyCallCounter.collision_water);
     PUPPYPRINT_GET_SNAPSHOT();
-    s32 waterLevel = find_water_floor(x, y, z, &floor);
-
-    if (p != NULL && waterLevel == FLOOR_LOWER_LIMIT) {
-        s32 numRegions = *p++;
-
-        for (s32 i = 0; i < numRegions; i++) {
-            val = *p++;
-            loX = *p++;
-            loZ = *p++;
-            hiX = *p++;
-            hiZ = *p++;
-
-            // If the location is within a water box and it is a water box.
-            // Water is less than 50 val only, while above is gas and such.
-            if (loX < x && x < hiX && loZ < z && z < hiZ && val < 50) {
-                // Set the water height. Since this breaks, only return the first height.
-                waterLevel = *p;
-                break;
-            }
-            p++;
+    f32 best = -1.0f;
+    if (gStaticSurfaceIndex.hasWater) {
+        struct SurfaceContact hit;
+        best = collision_raycast(origin, dir, length, 0.0f,
+                                 COLLISION_FLAG_WATER_ONLY | COLLISION_FLAG_EXCLUDE_DYNAMIC, &hit);
+        if (hit.surface != NULL) {
+            vec3_set(normal, hit.normal.x, hit.normal.y, hit.normal.z);
+            length = best;
         }
     }
-    *pfloor = floor;
-
+    if (gEnvironmentRegions != NULL && dir[1] < 0.0f) {
+        const TerrainData *box = gEnvironmentRegions + 1;
+        f32 invY = -1.0f / dir[1];
+        for (s32 i = 0; i < gEnvironmentRegions[0]; i++, box += 6) {
+            if (box[0] >= 50) continue;
+            f32 distance = (origin[1] - box[5]) * invY;
+            if (distance < 0.0f || distance > length) continue;
+            f32 x = origin[0] + dir[0] * distance;
+            f32 z = origin[2] + dir[2] * distance;
+            if (x < box[1] || x > box[3] || z < box[2] || z > box[4]) continue;
+            best = length = distance;
+            vec3_copy(normal, gVec3fY);
+        }
+    }
     profiler_collision_update(first);
-    return waterLevel;
+    return best;
 }
 
 /**
@@ -551,10 +561,9 @@ s32 find_water_level(s32 x, s32 z) { // HACKERSM64_DO: Allow y pos
     s32 val;
     s32 loX, hiX, loZ, hiZ;
     TerrainData *p = gEnvironmentRegions;
-    struct Surface *floor = NULL;
     PUPPYPRINT_ADD_COUNTER(gPuppyCallCounter.collision_water);
     PUPPYPRINT_GET_SNAPSHOT();
-    s32 waterLevel = find_water_floor(x, ((gCollisionFlags & COLLISION_FLAG_CAMERA) ? gLakituState.pos[1] : gMarioState->pos[1]), z, &floor);
+    s32 waterLevel = find_water_floor(x, (gCollisionFlags & COLLISION_FLAG_CAMERA) ? gLakituState.pos[1] : gMarioState->pos[1], z);
 
     if ((p != NULL) && (waterLevel == FLOOR_LOWER_LIMIT)) {
         s32 numRegions = *p++;

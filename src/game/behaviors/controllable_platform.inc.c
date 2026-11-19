@@ -214,8 +214,7 @@ void bhv_controllable_platform_loop(void) {
     }
 
     controllable_platform_tilt_from_mario();
-    o->oPosX += o->oVelX;
-    o->oPosZ += o->oVelZ;
+    obj_offset_local(o, &o->oPosVec, &o->oPosVec, o->oVelX, 0.0f, o->oVelZ);
     if (sControllablePlatformDirectionState != 0 && sControllablePlatformDirectionState != 6) {
         cur_obj_play_sound_1(SOUND_ENV_ELEVATOR2);
     }

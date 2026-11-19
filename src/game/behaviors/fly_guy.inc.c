@@ -8,14 +8,13 @@
  */
 static struct ObjectHitbox sFlyGuyHitbox = {
     /* interactType:      */ INTERACT_BOUNCE_TOP,
-    /* downOffset:        */ 0,
     /* damageOrCoinValue: */ 2,
     /* health:            */ 0,
     /* numLootCoins:      */ 2,
-    /* radius:            */ 70,
-    /* height:            */ 60,
-    /* hurtboxRadius:     */ 40,
-    /* hurtboxHeight:     */ 50,
+    /* radius:            */ 50,
+    /* offset:            */ 18,
+    /* hurtboxRadius:     */ 25,
+    /* hurtboxOffset:     */ 20,
 };
 
 /**
@@ -69,7 +68,7 @@ static void fly_guy_act_approach_mario(void) {
         // If facing toward mario and we are either near mario laterally or
         // far above him
         if (abs_angle_diff(o->oAngleToMario, o->oFaceAngleYaw) < 0x2000
-            && (o->oPosY - gMarioObject->oPosY > 400.0f || o->oDistanceToMario < 400.0f)) {
+            && (obj_height_difference(o, &o->oPosVec, &gMarioObject->oPosVec) > 400.0f || o->oDistanceToMario < 400.0f)) {
             // Either shoot fire or lunge
             if (o->oBehParams2ndByte != FLY_GUY_BP_LUNGES && random_u16() % 2) {
                 o->oAction = FLY_GUY_ACT_SHOOT_FIRE;
@@ -115,7 +114,7 @@ static void fly_guy_act_lunge(void) {
         obj_face_yaw_approach(o->oMoveAngleYaw, 0x800);
 
         // Continue moving upward until at least 200 units above mario
-        if (o->oPosY < gMarioObject->oPosY + 200.0f) {
+        if (obj_height_difference(o, &o->oPosVec, &gMarioObject->oPosVec) < 200.0f) {
             obj_y_vel_approach(20.0f, 0.5f);
         } else if (obj_y_vel_approach(0.0f, 0.5f)) {
             // Wait until roll is zero
@@ -194,7 +193,7 @@ void bhv_fly_guy_update(void) {
 
         // Oscillate up and down
         o->oFlyGuyOscTimer++;
-        o->oPosY += coss(0x400 * o->oFlyGuyOscTimer) * 1.5f;
+        obj_add_up(o, &o->oPosVec, coss(0x400 * o->oFlyGuyOscTimer) * 1.5f);
 
         switch (o->oAction) {
             case FLY_GUY_ACT_IDLE:

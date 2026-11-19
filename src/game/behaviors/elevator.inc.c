@@ -15,23 +15,27 @@ void elevator_starting_shake(void) {
     cur_obj_shake_screen(SHAKE_POS_SMALL);
 }
 
+static f32 elevator_height(const struct Object *rider) {
+    return obj_height_difference(o, &rider->oPosVec, &o->oHomeVec);
+}
+
 void elevator_act_0(void) {
     o->oVelY = 0;
     if (o->oElevatorType == 2) {
         if (gMarioObject->platform == o) {
-            if (o->oPosY > o->oElevatorMidY) {
+            if (elevator_height(o) > o->oElevatorMidY) {
                 o->oAction = 2;
             } else {
                 o->oAction = 1;
             }
         }
-    } else if (gMarioObject->oPosY > o->oElevatorMidY || o->oElevatorType == 1) {
-        o->oPosY = o->oElevatorMaxY;
+    } else if (elevator_height(gMarioObject) > o->oElevatorMidY || o->oElevatorType == 1) {
+        obj_offset_up(o, &o->oPosVec, &o->oHomeVec, o->oElevatorMaxY);
         if (gMarioObject->platform == o) {
             o->oAction = 2;
         }
     } else {
-        o->oPosY = o->oElevatorMinY;
+        obj_offset_up(o, &o->oPosVec, &o->oHomeVec, o->oElevatorMinY);
         if (gMarioObject->platform == o) {
             o->oAction = 1;
         }
@@ -44,12 +48,12 @@ void elevator_act_1(void) {
         elevator_starting_shake();
     }
     approach_f32_signed(&o->oVelY, 10.0f, 2.0f);
-    o->oPosY += o->oVelY;
-    if (o->oPosY > o->oElevatorMaxY) {
-        o->oPosY = o->oElevatorMaxY;
+    obj_add_up(o, &o->oPosVec, o->oVelY);
+    if (elevator_height(o) > o->oElevatorMaxY) {
+        obj_offset_up(o, &o->oPosVec, &o->oHomeVec, o->oElevatorMaxY);
         if (o->oElevatorType == 2 || o->oElevatorType == 1) {
             o->oAction = 3;
-        } else if (gMarioObject->oPosY < o->oElevatorMidY) {
+        } else if (elevator_height(gMarioObject) < o->oElevatorMidY) {
             o->oAction = 2;
         } else {
             o->oAction = 3;
@@ -63,14 +67,14 @@ void elevator_act_2(void) {
         elevator_starting_shake();
     }
     approach_f32_signed(&o->oVelY, -10.0f, -2.0f);
-    o->oPosY += o->oVelY;
-    if (o->oPosY < o->oElevatorMinY) {
-        o->oPosY = o->oElevatorMinY;
+    obj_add_up(o, &o->oPosVec, o->oVelY);
+    if (elevator_height(o) < o->oElevatorMinY) {
+        obj_offset_up(o, &o->oPosVec, &o->oHomeVec, o->oElevatorMinY);
         if (o->oElevatorType == 1) {
             o->oAction = 4;
         } else if (o->oElevatorType == 2) {
             o->oAction = 3;
-        } else if (gMarioObject->oPosY > o->oElevatorMidY) {
+        } else if (elevator_height(gMarioObject) > o->oElevatorMidY) {
             o->oAction = 1;
         } else {
             o->oAction = 3;
@@ -101,18 +105,11 @@ void elevator_act_3(void) {
 }
 
 void bhv_elevator_init(void) {
-    s32 index = sElevatorHeights[o->oBehParams2ndByte * 3 + 2];
-    if (index == 0) {
-        o->oElevatorMinY = sElevatorHeights[o->oBehParams2ndByte * 3];
-        o->oElevatorMaxY = o->oHomeY;
-        o->oElevatorMidY = (o->oElevatorMinY + o->oElevatorMaxY) / 2;
-        o->oElevatorType = cur_obj_has_behavior(bhvRrElevatorPlatform);
-    } else {
-        o->oElevatorMinY = sElevatorHeights[o->oBehParams2ndByte * 3];
-        o->oElevatorMaxY = sElevatorHeights[o->oBehParams2ndByte * 3 + 1];
-        o->oElevatorMidY = (o->oElevatorMinY + o->oElevatorMaxY) / 2;
-        o->oElevatorType = 2;
-    }
+    const s16 *heights = &sElevatorHeights[o->oBehParams2ndByte * 3];
+    o->oElevatorMinY = heights[0] - o->oHomeY;
+    o->oElevatorMaxY = heights[2] ? heights[1] - o->oHomeY : 0.0f;
+    o->oElevatorMidY = (o->oElevatorMinY + o->oElevatorMaxY) * 0.5f;
+    o->oElevatorType = heights[2] ? 2 : cur_obj_has_behavior(bhvRrElevatorPlatform);
 }
 
 ObjActionFunc sElevatorActions[] = {

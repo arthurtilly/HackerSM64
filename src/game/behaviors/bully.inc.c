@@ -2,26 +2,24 @@
 
 static struct ObjectHitbox sSmallBullyHitbox = {
     /* interactType:      */ INTERACT_BULLY,
-    /* downOffset:        */ 0,
     /* damageOrCoinValue: */ 1,
     /* health:            */ 0,
     /* numLootCoins:      */ 0,
-    /* radius:            */ 73,
-    /* height:            */ 123,
-    /* hurtboxRadius:     */ 63,
-    /* hurtboxHeight:     */ 113,
+    /* radius:            */ 60,
+    /* offset:            */ 60,
+    /* hurtboxRadius:     */ 40,
+    /* hurtboxOffset:     */ 54,
 };
 
 static struct ObjectHitbox sBigBullyHitbox = {
     /* interactType:      */ INTERACT_BULLY,
-    /* downOffset:        */ 0,
     /* damageOrCoinValue: */ 1,
     /* health:            */ 0,
     /* numLootCoins:      */ 0,
-    /* radius:            */ 115,
-    /* height:            */ 235,
-    /* hurtboxRadius:     */ 105,
-    /* hurtboxHeight:     */ 225,
+    /* radius:            */ 108,
+    /* offset:            */ 115,
+    /* hurtboxRadius:     */ 83,
+    /* hurtboxOffset:     */ 110,
 };
 
 void bhv_small_bully_init(void) {
@@ -53,10 +51,6 @@ void bully_check_mario_collision(void) {
 }
 
 void bully_act_chase_mario(void) {
-    f32 homeX = o->oHomeX;
-    f32 posY = o->oPosY;
-    f32 homeZ = o->oHomeZ;
-
     if (o->oTimer < 10) {
         o->oForwardVel = 3.0f;
         obj_turn_toward_object(o, gMarioObject, O_MOVE_ANGLE_YAW_INDEX, 0x1000);
@@ -72,7 +66,7 @@ void bully_act_chase_mario(void) {
         }
     }
 
-    if (!is_point_within_radius_of_mario(homeX, posY, homeZ, 1000)) {
+    if (!is_point_within_radius_of_mario(o->oHomeX, o->oHomeY, o->oHomeZ, 1000)) {
         o->oAction = BULLY_ACT_PATROL;
         cur_obj_init_animation(0);
     }
@@ -165,7 +159,7 @@ void bully_spawn_coin(void) {
 
     coin->oForwardVel = 10.0f;
     coin->oVelY = 100.0f;
-    coin->oPosY = o->oPosY + 310.0f;
+    obj_add_up(coin, &coin->oPosVec, 310.0f);
     coin->oMoveAngleYaw = (f32)(o->oBullyMarioCollisionAngle + 0x8000) + random_float() * 1024.0f;
 }
 
@@ -201,7 +195,7 @@ void bhv_bully_loop(void) {
         case BULLY_ACT_PATROL:
             o->oForwardVel = 5.0f;
 
-            if (obj_return_home_if_safe(o, o->oHomeX, o->oPosY, o->oHomeZ, 800) == TRUE) {
+            if (cur_obj_return_home_if_safe(800)) {
                 o->oAction = BULLY_ACT_CHASE_MARIO;
                 cur_obj_init_animation(1);
             }
@@ -269,7 +263,7 @@ void bhv_big_bully_with_minions_loop(void) {
         case BULLY_ACT_PATROL:
             o->oForwardVel = 5.0f;
 
-            if (obj_return_home_if_safe(o, o->oHomeX, o->oPosY, o->oHomeZ, 1000) == TRUE) {
+            if (cur_obj_return_home_if_safe(1000)) {
                 o->oAction = BULLY_ACT_CHASE_MARIO;
                 cur_obj_init_animation(1);
             }

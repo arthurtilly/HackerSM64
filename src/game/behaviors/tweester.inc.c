@@ -8,14 +8,13 @@
 
 struct ObjectHitbox sTweesterHitbox = {
     /* interactType:      */ INTERACT_TORNADO,
-    /* downOffset:        */ 0,
     /* damageOrCoinValue: */ 0,
     /* health:            */ 0,
     /* numLootCoins:      */ 0,
-    /* radius:            */ 1500,
-    /* height:            */ 4000,
+    /* radius:            */ 1450,
+    /* offset:            */ 2000,
     /* hurtboxRadius:     */ 0,
-    /* hurtboxHeight:     */ 0,
+    /* hurtboxOffset:     */ 0,
 };
 
 /**
@@ -143,6 +142,7 @@ ObjActionFunc sTweesterActions[] = {
  */
 void bhv_tweester_loop(void) {
     obj_set_hitbox(o, &sTweesterHitbox);
+    o->interactionHalfHeight = o->hitboxOffset;
     cur_obj_call_action_function(sTweesterActions);
     o->oInteractStatus = INT_STATUS_NONE;
 }
@@ -154,7 +154,7 @@ void bhv_tweester_loop(void) {
 void bhv_tweester_sand_particle_loop(void) {
     o->oMoveAngleYaw += 0x3700;
     o->oForwardVel += 15.0f;
-    o->oPosY += 22.0f;
+    obj_add_up(o, &o->oPosVec, 22.0f);
 
     cur_obj_scale(random_float() + 1.0f);
 

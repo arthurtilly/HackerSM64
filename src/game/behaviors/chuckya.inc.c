@@ -24,7 +24,7 @@ void common_anchor_mario_behavior(f32 forwardVel, f32 yVel, s32 flag) {
             break;
     }
 
-    o->oMoveAngleYaw = o->parentObj->oMoveAngleYaw;
+    o->oMoveAngleYaw = obj_yaw_in_frame(o, o->parentObj, o->parentObj->oMoveAngleYaw);
     if (o->parentObj->activeFlags == ACTIVE_FLAG_DEACTIVATED) {
         obj_mark_for_deletion(o);
     }

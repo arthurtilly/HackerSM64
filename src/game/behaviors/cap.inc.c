@@ -2,14 +2,13 @@
 
 static struct ObjectHitbox sCapHitbox = {
     /* interactType:      */ INTERACT_CAP,
-    /* downOffset:        */ 0,
     /* damageOrCoinValue: */ 0,
     /* health:            */ 0,
     /* numLootCoins:      */ 0,
-    /* radius:            */ 80,
-    /* height:            */ 80,
-    /* hurtboxRadius:     */ 90,
-    /* hurtboxHeight:     */ 90,
+    /* radius:            */ 60,
+    /* offset:            */ 25,
+    /* hurtboxRadius:     */ 51,
+    /* hurtboxOffset:     */ 29,
 };
 
 s32 cap_set_hitbox(void) {

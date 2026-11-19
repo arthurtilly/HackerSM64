@@ -2,14 +2,13 @@
 
 static struct ObjectHitbox sKleptoHitbox = {
     /* interactType:      */ INTERACT_HIT_FROM_BELOW,
-    /* downOffset:        */ 0,
     /* damageOrCoinValue: */ 0,
     /* health:            */ 1,
     /* numLootCoins:      */ 0,
-    /* radius:            */ 160,
-    /* height:            */ 250,
-    /* hurtboxRadius:     */ 80,
-    /* hurtboxHeight:     */ 200,
+    /* radius:            */ 140,
+    /* offset:            */ 115,
+    /* hurtboxRadius:     */ 65,
+    /* hurtboxOffset:     */ 90,
 };
 
 static Vec3f sKleptoTargetPositions[] = {
@@ -119,7 +118,7 @@ static void klepto_change_target(void) {
     o->oKleptoHomeYOffset  = 400 * absi(newTarget - o->oKleptoTargetNumber);
     o->oKleptoTargetNumber = newTarget;
 
-    vec3f_copy_y_off(&o->oHomeVec, sKleptoTargetPositions[o->oKleptoTargetNumber], o->oKleptoHomeYOffset);
+    obj_offset_up(o, &o->oHomeVec, sKleptoTargetPositions[o->oKleptoTargetNumber], o->oKleptoHomeYOffset);
 
     o->oKleptoHalfLateralDistToHome = cur_obj_lateral_dist_to_home() / 2;
 }
@@ -164,7 +163,7 @@ static void klepto_approach_target(f32 targetSpeed) {
         if (o->oKleptoHalfLateralDistToHome > 0.0f) {
             o->oKleptoHalfLateralDistToHome -= o->oForwardVel;
             if (o->oKleptoHalfLateralDistToHome <= 0.0f) {
-                o->oHomeY -= o->oKleptoHomeYOffset;
+                obj_add_up(o, &o->oHomeVec, -o->oKleptoHomeYOffset);
             }
         }
 
@@ -223,7 +222,7 @@ static void klepto_act_dive_at_mario(void) {
             }
         }
     } else {
-        f32 dy = o->oPosY - gMarioObject->oPosY;
+        f32 dy = obj_height_difference(o, &o->oPosVec, &gMarioObject->oPosVec);
 
         if (o->oSoundStateID == KLEPTO_ANIM_DIVE_AT_MARIO_3) {
             cur_obj_set_anim_if_at_end(KLEPTO_ANIM_DIVE_AT_MARIO_4);
@@ -273,7 +272,7 @@ static void klepto_act_struck_by_mario(void) {
         o->oMoveAnglePitch = -obj_get_pitch_from_vel();
         o->oKleptoSpeed = sqrtf(sqr(o->oForwardVel) + sqr(o->oVelY));
 
-        vec3f_copy_y_off(&o->oHomeVec, &o->oPosVec, 500.0f);
+        obj_offset_up(o, &o->oHomeVec, &o->oPosVec, 500.0f);
     }
 }
 

@@ -8,6 +8,7 @@
 #include "debugger/assert.h"
 #include "game/memory.h"
 #include "game/object_helpers.h"
+#include "game/game_init.h"
 #include "game/macro_special_objects.h"
 #include "surface_collision.h"
 #include "math_util.h"
@@ -425,19 +426,10 @@ void clear_dynamic_surfaces(void) {
  * Applies an object's transformation to the object's vertices.
  */
 void transform_object_vertices(TerrainData **data, TerrainData *vertexData) {
-    Mat4 *objectTransform = &o->transform;
-
-    register s32 numVertices = *(*data)++;
-
-    register TerrainData *vertices = *data;
-
-    if (o->header.gfx.throwMatrix == NULL) {
-        o->header.gfx.throwMatrix = objectTransform;
-        obj_build_transform_from_pos_and_angle(o, O_POS_INDEX, O_FACE_ANGLE_INDEX);
-    }
-
     Mat4 transform;
-    mtxf_scale_vec3f(transform, *objectTransform, o->header.gfx.scale);
+    s32 numVertices = *(*data)++;
+    TerrainData *vertices = *data;
+    obj_build_transform(o, transform);
 
     // Go through all vertices, rotating and translating them to transform the object.
     Vec3f pos;
@@ -524,6 +516,7 @@ void load_object_collision_model(void) {
         };
         load_object_tree(&batch, SURFACE_FLAG_DYNAMIC);
         build_surface_tree(&gDynamicSurfaceIndex, &batch);
+        o->collisionFrame = gGlobalTimer;
     }
 
     f32 marioDist = o->oDistanceToMario;

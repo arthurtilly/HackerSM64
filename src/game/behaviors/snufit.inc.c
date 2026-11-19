@@ -8,26 +8,24 @@
 
 struct ObjectHitbox sSnufitHitbox = {
     /* interactType:      */ INTERACT_HIT_FROM_BELOW,
-    /* downOffset:        */ 0,
     /* damageOrCoinValue: */ 2,
     /* health:            */ 0,
     /* numLootCoins:      */ 2,
-    /* radius:            */ 100,
-    /* height:            */ 60,
-    /* hurtboxRadius:     */ 70,
-    /* hurtboxHeight:     */ 50,
+    /* radius:            */ 78,
+    /* offset:            */ 15,
+    /* hurtboxRadius:     */ 48,
+    /* hurtboxOffset:     */ 20,
 };
 
 struct ObjectHitbox sSnufitBulletHitbox = {
     /* interactType:      */ INTERACT_SNUFIT_BULLET,
-    /* downOffset:        */ 50,
     /* damageOrCoinValue: */ 1,
     /* health:            */ 0,
     /* numLootCoins:      */ 0,
-    /* radius:            */ 100,
-    /* height:            */ 50,
-    /* hurtboxRadius:     */ 100,
-    /* hurtboxHeight:     */ 50,
+    /* radius:            */ 74,
+    /* offset:            */ -26,
+    /* hurtboxRadius:     */ 66,
+    /* hurtboxOffset:     */ -25,
 };
 
 /**
@@ -145,9 +143,8 @@ void bhv_snufit_loop(void) {
         // Snufit orbits in a circular motion depending on an internal timer
         // and vertically off the global timer. The vertical position can be
         // manipulated using pauses since it uses the global timer.
-        o->oPosX = o->oHomeX + 100.0f * coss(o->oSnufitCircularPeriod);
-        o->oPosY = o->oHomeY + 8.0f * coss(4000 * gGlobalTimer);
-        o->oPosZ = o->oHomeZ + 100.0f * sins(o->oSnufitCircularPeriod);
+        obj_offset_local(o, &o->oPosVec, &o->oHomeVec, 100.0f * coss(o->oSnufitCircularPeriod),
+                         8.0f * coss(4000 * gGlobalTimer), 100.0f * sins(o->oSnufitCircularPeriod));
 
         o->oSnufitBodyScale
             = (s16)(o->oSnufitBodyBaseScale + 666

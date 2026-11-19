@@ -10,15 +10,10 @@
  */
 
 /**
- * Initialize the hitbox height field for bhvPoleGrabbing.
+ * The first two behavior parameter bytes give the shaft length in tens of units.
  */
 void bhv_pole_init(void) {
-    /**
-     * This is equivalent to using `o->oBehParams2ndByte` according to
-     * `spawn_objects_from_info`.
-     */
-    // This treats bparam1 and bparam2 as a single value
-    o->hitboxHeight = GET_BPARAM12(o->oBehParams) * 10;
+    obj_set_interaction_volume(o, o->hitboxRadius, 0, GET_BPARAM12(o->oBehParams) * 10);
 }
 
 /**
@@ -29,7 +24,7 @@ void bhv_pole_init(void) {
 void bhv_giant_pole_loop(void) {
     if (o->oTimer == 0) {
         struct Object *topBall = spawn_object(o, MODEL_YELLOW_SPHERE, bhvYellowBall);
-        topBall->oPosY += o->hitboxHeight + 50.0f;
+        obj_sphere_center(o, &o->oPosVec, obj_trigger_top(o) + 50.0f, &topBall->oPosVec);
     }
     bhv_pole_base_loop();
 }

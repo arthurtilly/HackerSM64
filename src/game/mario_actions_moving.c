@@ -9,6 +9,7 @@
 #include "engine/math_util.h"
 #include "engine/surface_collision.h"
 #include "mario_step.h"
+#include "object_helpers.h"
 #include "area.h"
 #include "interaction.h"
 #include "memory.h"
@@ -38,8 +39,6 @@ struct LandingAction   sDoubleJumpLandAction = {         4,               5,    
 struct LandingAction   sTripleJumpLandAction = {         4,               0,      ACT_FREEFALL,   ACT_TRIPLE_JUMP_LAND_STOP, ACT_UNINITIALIZED,      ACT_FREEFALL,      ACT_BEGIN_SLIDING, };
 struct LandingAction     sBackflipLandAction = {         4,               0,      ACT_FREEFALL,      ACT_BACKFLIP_LAND_STOP,      ACT_BACKFLIP,      ACT_FREEFALL,      ACT_BEGIN_SLIDING, };
 
-Mat4 sFloorAlignMatrix[2];
-
 s16 tilt_body_running(struct MarioState *m) {
     s16 pitch = find_floor_slope(m, 0);
     pitch = pitch * m->forwardVel / 40.0f;
@@ -65,11 +64,11 @@ void play_step_sound(struct MarioState *m, s16 frame1, s16 frame2) {
 }
 
 void align_with_floor(struct MarioState *m) {
-    if (m->floor != NULL && m->pos[1] < m->floorHeight + 80.0f) {
-        Vec3f normal = { m->floorNormal.x, m->floorNormal.y, m->floorNormal.z };
-        m->pos[1] = m->floorHeight;
-        mtxf_align_terrain_normal(sFloorAlignMatrix[m->playerID], normal, m->pos, m->faceAngle[1]);
-        m->marioObj->header.gfx.throwMatrix = &sFloorAlignMatrix[m->playerID];
+    if (m->floor != NULL && obj_height(m->marioObj, m->pos) < m->floorHeight + 80.0f) {
+        Vec3f normal = { m->floor->normal.x, m->floor->normal.y, m->floor->normal.z };
+        obj_set_height(m->marioObj, m->pos, m->floorHeight);
+        vec3_copy(m->marioObj->header.gfx.pos, m->pos);
+        obj_align_to_normal(m->marioObj, normal, m->faceAngle[1]);
     }
 }
 
@@ -84,13 +83,13 @@ void check_ledge_climb_down(struct MarioState *m) {
     Vec3f pos;
     if (m->forwardVel < 10.0f) {
         vec3_copy(pos, m->pos);
-        if (resolve_wall_sphere(pos, gVec3fY, -10.0f, 10.0f, WALL_KICK_MAX_UP, &wall)) {
-            f32 floorHeight = find_floor_height(pos[0], pos[1], pos[2]);
-            if (!is_outside_level_bounds(pos[0], pos[2]) && pos[1] - floorHeight > 160.0f) {
-                s16 wallAngle = SURFACE_YAW(&wall);
+        if (resolve_actor_wall(m->marioObj, pos, -10.0f, 10.0f, WALL_KICK_MAX_UP, &wall)) {
+            f32 floorHeight = find_actor_floor(m->marioObj, pos, 0.0f, NULL);
+            if (!is_outside_level_bounds(pos[0], pos[2]) && obj_height(m->marioObj, pos) - floorHeight > 160.0f) {
+                struct Normal n = obj_local_normal(m->marioObj, wall.normal);
+                s16 wallAngle = atan2s(n.z, n.x);
                 if (abs_angle_diff(wallAngle, m->faceAngle[1]) < 0x4000) {
-                    m->pos[0] = pos[0] - 20.0f * wall.normal.x;
-                    m->pos[2] = pos[2] - 20.0f * wall.normal.z;
+                    obj_offset_local(m->marioObj, m->pos, pos, -20.0f * n.x, 0.0f, -20.0f * n.z);
 
                     m->faceAngle[0] = 0x0;
                     m->faceAngle[1] = wallAngle + 0x8000;
@@ -314,12 +313,6 @@ s32 apply_landing_accel(struct MarioState *m, f32 frictionFactor) {
 void update_shell_speed(struct MarioState *m) {
     f32 maxTargetSpeed;
     f32 targetSpeed;
-
-    if (m->floorHeight < m->waterLevel) {
-        struct SurfaceContact floor;
-        get_shell_water_floor(m->waterLevel, &floor);
-        set_mario_floor(m, &floor, m->waterLevel);
-    }
 
     if (m->floorType == SURFACE_SLOW) {
         maxTargetSpeed = 48.0f;
@@ -649,9 +642,9 @@ void anim_and_audio_for_heavy_walk(struct MarioState *m) {
 void push_or_sidle_wall(struct MarioState *m, Vec3f startPos) {
     s16 wallAngle;
     s16 dWallAngle;
-    f32 dx = m->pos[0] - startPos[0];
-    f32 dz = m->pos[2] - startPos[2];
-    f32 movedDistance = sqrtf(sqr(dx) + sqr(dz));
+    Vec3f moved;
+    obj_local_delta(m->marioObj, moved, m->pos, startPos);
+    f32 movedDistance = sqrtf(sqr(moved[0]) + sqr(moved[2]));
     //! (Speed Crash) If a wall is after moving 16384 distance, this crashes.
     s32 animSpeed = (s32)(movedDistance * 2.0f * 0x10000);
 
@@ -728,7 +721,7 @@ void tilt_body_ground_shell(struct MarioState *m, s16 startYaw) {
     marioBodyState->headAngle[2] = -marioBodyState->torsoAngle[2];
 
     marioObj->header.gfx.angle[2] = marioBodyState->torsoAngle[2];
-    marioObj->header.gfx.pos[1] += 45.0f;
+    obj_add_up(marioObj, marioObj->header.gfx.pos, 45.0f);
 }
 
 s32 act_walking(struct MarioState *m) {
@@ -1285,7 +1278,7 @@ s32 act_burning_ground(struct MarioState *m) {
         return set_mario_action(m, ACT_WALKING, 0);
     }
 
-    if (m->waterLevel - m->floorHeight > 50.0f) {
+    if (m->waterLevel - obj_world_y_at_height(m->marioObj, m->pos, m->floorHeight) > 50.0f) {
         play_sound(SOUND_GENERAL_FLAME_OUT, m->marioObj->header.gfx.cameraToObject);
         return set_mario_action(m, ACT_WALKING, 0);
     }

@@ -34,7 +34,7 @@ void bhv_beta_chest_bottom_init(void) {
  * with radius 200 units and height 200 units.
  */
 void bhv_beta_chest_bottom_loop(void) {
-    cur_obj_push_mario_away_from_cylinder(200.0f, 200.0f);
+    cur_obj_push_mario_away_from_sphere(132.0f, 90.0f);
 }
 
 /**

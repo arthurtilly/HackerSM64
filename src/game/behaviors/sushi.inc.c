@@ -3,9 +3,9 @@
 void bhv_sushi_shark_loop(void) {
     f32 waterLevel = find_water_level(o->oPosX, o->oPosZ);
 
-    o->oPosX = o->oHomeX + sins(o->oSushiSharkAngleFromHome) * 1700.0f;
-    o->oPosZ = o->oHomeZ + coss(o->oSushiSharkAngleFromHome) * 1700.0f;
-    o->oPosY = waterLevel + o->oHomeY + sins(o->oSushiSharkAngleFromHome) * 200.0f;
+    Vec3f center = { o->oHomeX, waterLevel + o->oHomeY, o->oHomeZ };
+    obj_offset_forward(o, &o->oPosVec, center, o->oSushiSharkAngleFromHome, 1700.0f,
+                       sins(o->oSushiSharkAngleFromHome) * 200.0f);
 
     o->oMoveAngleYaw = o->oSushiSharkAngleFromHome + 0x4000;
     o->oSushiSharkAngleFromHome += 0x80;

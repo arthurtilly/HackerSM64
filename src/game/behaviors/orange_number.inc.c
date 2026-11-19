@@ -3,30 +3,27 @@
 void bhv_orange_number_init(void) {
     o->oAnimState = o->oBehParams2ndByte;
     o->oVelY = 26.0f;
-    o->oHomeY = o->oPosY;
+    obj_set_height(o, &o->oHomeVec, obj_height(o, &o->oPosVec));
 }
 
 void bhv_orange_number_loop(void) {
 #ifdef DIALOG_INDICATOR
     if (o->oAnimState <= ORANGE_NUMBER_9) {
 #endif
-        o->oPosY += o->oVelY;
+        obj_add_up(o, &o->oPosVec, o->oVelY);
         o->oVelY -= 2.0f;
 
         if (o->oVelY < -21.0f) {
             o->oVelY = 14.0f;
         }
 
-        s32 offsetX, offsetZ;
-        offsetX = o->oOrangeNumberOffset * sins(gCamera->nextYaw + 0x4000);
-        offsetZ = o->oOrangeNumberOffset * coss(gCamera->nextYaw + 0x4000);
-
-        o->oPosX = o->oHomeX + offsetX;
-        o->oPosZ = o->oHomeZ + offsetZ;
+        s16 rightYaw = obj_yaw_in_frame(o, NULL, gCamera->nextYaw + 0x4000);
+        obj_offset_forward(o, &o->oPosVec, &o->oHomeVec, rightYaw, o->oOrangeNumberOffset,
+                           obj_height_difference(o, &o->oPosVec, &o->oHomeVec));
 
         if (o->oTimer == 35) {
             struct Object *sparkleObj = spawn_object(o, MODEL_SPARKLES, bhvCoinSparklesSpawner);
-            sparkleObj->oPosY -= 30.0f;
+            obj_add_up(sparkleObj, &sparkleObj->oPosVec, -30.0f);
             obj_mark_for_deletion(o);
         }
 #ifdef DIALOG_INDICATOR

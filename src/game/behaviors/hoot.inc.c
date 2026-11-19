@@ -2,35 +2,33 @@
 
 void bhv_hoot_init(void) {
     cur_obj_init_animation(HOOT_ANIM_DEFAULT);
-    Vec3f homeOffset = { 800.0f, -150.0f, 300.0f };
-    vec3f_sum(&o->oHomeVec, &o->oPosVec, homeOffset);
+    obj_offset_local(o, &o->oHomeVec, &o->oPosVec, 800.0f, -150.0f, 300.0f);
     o->header.gfx.node.flags |= GRAPH_RENDER_INVISIBLE;
 
     cur_obj_become_intangible();
 }
 
 f32 hoot_find_next_floor(f32 dist) {
-    f32 nextX = (dist * sins(o->oMoveAngleYaw)) + o->oPosX;
-    f32 nextZ = (dist * coss(o->oMoveAngleYaw)) + o->oPosZ;
-
-    return find_floor_height(nextX, CELL_HEIGHT_LIMIT, nextZ);
+    Vec3f pos;
+    obj_offset_forward(o, pos, &o->oPosVec, o->oMoveAngleYaw, dist, 0.0f);
+    return find_actor_floor(o, pos, CELL_HEIGHT_LIMIT - obj_height(o, pos), NULL);
 }
 
 void hoot_floor_bounce(void) {
     f32 floorY = hoot_find_next_floor(375.0f);
 
-    if (floorY + 75.0f > o->oPosY) {
+    if (floorY + 75.0f > obj_height(o, &o->oPosVec)) {
         o->oMoveAnglePitch -= DEGREES(20);
     }
 
     floorY = hoot_find_next_floor(200.0f);
-    if (floorY + 125.0f > o->oPosY) {
+    if (floorY + 125.0f > obj_height(o, &o->oPosVec)) {
         o->oMoveAnglePitch -= DEGREES(40);
     }
 
     floorY = hoot_find_next_floor(0.0f);
-    if (floorY + 125.0f > o->oPosY) {
-        o->oPosY = (floorY + 125.0f);
+    if (floorY + 125.0f > obj_height(o, &o->oPosVec)) {
+        obj_set_height(o, &o->oPosVec, floorY + 125.0f);
     }
 
     if (o->oMoveAnglePitch < -DEGREES(120)) {
@@ -38,38 +36,20 @@ void hoot_floor_bounce(void) {
     }
 }
 
-void hoot_free_step(s16 fastOscY, s32 speed) {
-    struct Surface *floor;
-    s16 yaw = o->oMoveAngleYaw;
-    s16 pitch = o->oMoveAnglePitch;
-    s16 animFrame = o->header.gfx.animInfo.animFrame;
-    f32 xPrev = o->oPosX;
-    f32 zPrev = o->oPosZ;
-
-    o->oVelY = sins(pitch) * speed;
-    f32 hSpeed = coss(pitch) * speed;
-    o->oVelX = sins(yaw) * hSpeed;
-    o->oVelZ = coss(yaw) * hSpeed;
-
-    o->oPosX += o->oVelX;
-    o->oPosY -= o->oVelY + (coss((s32)(animFrame * (fastOscY == 0 ? 3276.8f : 6553.6f))) * 12.5f); // 50.0f / 4;
-    o->oPosZ += o->oVelZ;
-
-    find_floor(o->oPosX, o->oPosY, o->oPosZ, &floor);
-    if (floor == NULL) {
-        o->oPosX = xPrev;
-        o->oPosZ = zPrev;
-    }
-
-    if (animFrame == 0) {
-        cur_obj_play_sound_2(SOUND_GENERAL_WING_FLAP);
-    }
+static void hoot_fly(s32 speed, f32 flapRate) {
+    s16 frame = o->header.gfx.animInfo.animFrame;
+    f32 forward = coss(o->oMoveAnglePitch) * speed;
+    o->oVelX = sins(o->oMoveAngleYaw) * forward;
+    o->oVelZ = coss(o->oMoveAngleYaw) * forward;
+    o->oVelY = -sins(o->oMoveAnglePitch) * speed - coss((s32)(frame * flapRate)) * 12.5f;
+    cur_obj_move_using_vel();
+    if (frame == 0) cur_obj_play_sound_2(SOUND_GENERAL_WING_FLAP);
 }
 
 void hoot_player_set_yaw(void) {
 #ifdef HOOT_YAW_FIX
     s16 turnSpeed  = gMarioState->intendedMag * 0x20;
-    o->oMoveAngleYaw = approach_s16_symmetric(o->oMoveAngleYaw, gMarioState->intendedYaw, turnSpeed);
+    o->oMoveAngleYaw = approach_s16_symmetric(o->oMoveAngleYaw, obj_yaw_in_frame(o, gMarioObject, gMarioState->intendedYaw), turnSpeed);
 #else
     s16 stickX = gPlayer1Controller->rawStickX;
     s16 stickY = gPlayer1Controller->rawStickY;
@@ -79,50 +59,24 @@ void hoot_player_set_yaw(void) {
 #endif
 }
 
-void hoot_carry_step(s32 speed, UNUSED f32 xPrev, UNUSED f32 zPrev) {
-    s16 yaw = o->oMoveAngleYaw;
-    s16 pitch = o->oMoveAnglePitch;
-    s16 animFrame = o->header.gfx.animInfo.animFrame;
-
-    o->oVelY = sins(pitch) * speed;
-    f32 hSpeed = coss(pitch) * speed;
-    o->oVelX = sins(yaw) * hSpeed;
-    o->oVelZ = coss(yaw) * hSpeed;
-
-    o->oPosX += o->oVelX;
-    o->oPosY -= o->oVelY + (coss((s32)(animFrame * 6553.6f)) * 12.5f); // 50.0f / 4;
-    o->oPosZ += o->oVelZ;
-
-    if (animFrame == 0) {
-        cur_obj_play_sound_2(SOUND_GENERAL_WING_FLAP);
-    }
-}
-
-void hoot_surface_collision(f32 xPrev, UNUSED f32 yPrev, f32 zPrev) {
-    if (resolve_wall_sphere(&o->oPosVec, gVec3fY, 10.0f, 50.0f, 1.0f, NULL)) {
+static void hoot_surface_collision(const Vec3f prev) {
+    if (resolve_actor_wall(o, &o->oPosVec, 10.0f, 50.0f, 1.0f, NULL)) {
         gMarioObject->oInteractStatus |= INT_STATUS_MARIO_DROP_FROM_HOOT;
     }
 
-    f32 floorY = find_floor_height(o->oPosX, o->oPosY, o->oPosZ);
-    if (floorY == FLOOR_LOWER_LIMIT) {
-        o->oPosX = xPrev;
-        o->oPosZ = zPrev;
-        return;
+    if (absf(o->oPosX) > 8000.0f || absf(o->oPosZ) > 8000.0f) {
+        vec3_copy(&o->oPosVec, prev);
     }
-
-    if (absf(o->oPosX) > 8000.0f) o->oPosX = xPrev;
-
-    if (absf(o->oPosZ) > 8000.0f) o->oPosZ = zPrev;
-
-    if (floorY + 125.0f > o->oPosY) {
-        o->oPosY = floorY + 125.0f;
+    f32 floorY = find_actor_floor(o, &o->oPosVec, 0.0f, NULL);
+    if (floorY + 125.0f > obj_height(o, &o->oPosVec)) {
+        obj_set_height(o, &o->oPosVec, floorY + 125.0f);
     }
 }
 
-void hoot_act_ascent(f32 xPrev, f32 zPrev) {
-    f32 negX = 0 - o->oPosX;
-    f32 negZ = 0 - o->oPosZ;
-    s16 angleToOrigin = atan2s(negZ, negX);
+static void hoot_act_ascent(void) {
+    Vec3f delta;
+    vec3_scale_dest(delta, &o->oPosVec, -1.0f);
+    s16 angleToOrigin = obj_yaw_from_direction(o, delta);
 
     o->oMoveAngleYaw = approach_s16_symmetric(o->oMoveAngleYaw, angleToOrigin, 0x500);
     o->oMoveAnglePitch = DEGREES(290);
@@ -136,17 +90,16 @@ void hoot_act_ascent(f32 xPrev, f32 zPrev) {
         o->oAction = HOOT_ACT_CARRY;
     }
 
-    hoot_carry_step(60, xPrev, zPrev);
+    hoot_fly(60, 6553.6f);
 }
 
 void hoot_action_loop(void) {
-    f32 xPrev = o->oPosX;
-    f32 yPrev = o->oPosY;
-    f32 zPrev = o->oPosZ;
+    Vec3f prev;
+    vec3_copy(prev, &o->oPosVec);
 
     switch (o->oAction) {
         case HOOT_ACT_ASCENT:
-            hoot_act_ascent(xPrev, zPrev);
+            hoot_act_ascent();
             break;
 
         case HOOT_ACT_CARRY:
@@ -163,7 +116,7 @@ void hoot_action_loop(void) {
                 }
             }
 
-            hoot_carry_step(20, xPrev, zPrev);
+            hoot_fly(20, 6553.6f);
             break;
 
         case HOOT_ACT_TIRED:
@@ -171,7 +124,7 @@ void hoot_action_loop(void) {
 
             o->oMoveAnglePitch = 0;
 
-            hoot_carry_step(20, xPrev, zPrev);
+            hoot_fly(20, 6553.6f);
 
             if (o->oTimer > 60) {
                 gMarioObject->oInteractStatus |= INT_STATUS_MARIO_DROP_FROM_HOOT;
@@ -179,13 +132,14 @@ void hoot_action_loop(void) {
             break;
     }
 
-    hoot_surface_collision(xPrev, yPrev, zPrev);
+    hoot_surface_collision(prev);
 }
 
 void hoot_turn_to_home(void) {
-    s16 pitchToHome, yawToHome;
-    f32 distToHome;
-    vec3f_get_dist_and_angle(&o->oPosVec, &o->oHomeVec, &distToHome, &pitchToHome, &yawToHome);
+    Vec3f delta;
+    obj_local_delta(o, delta, &o->oHomeVec, &o->oPosVec);
+    s16 yawToHome = atan2s(delta[2], delta[0]);
+    s16 pitchToHome = atan2s(sqrtf(sqr(delta[0]) + sqr(delta[2])), delta[1]);
 
     o->oMoveAngleYaw = approach_s16_symmetric(o->oMoveAngleYaw, yawToHome, 0x140);
     o->oMoveAnglePitch = approach_s16_symmetric(o->oMoveAnglePitch, -pitchToHome, 0x140);
@@ -200,7 +154,7 @@ void hoot_awake_loop(void) {
 
         hoot_turn_to_home();
         hoot_floor_bounce();
-        hoot_free_step(0, 10);
+        hoot_fly(10, 3276.8f);
 
         o->oAction = 0;
         o->oTimer = 0;

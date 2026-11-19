@@ -2,14 +2,13 @@
 
 struct ObjectHitbox sUnagiHitbox = {
     /* interactType:      */ INTERACT_CLAM_OR_BUBBA,
-    /* downOffset:        */ 50,
     /* damageOrCoinValue: */ 3,
     /* health:            */ 99,
     /* numLootCoins:      */ 0,
-    /* radius:            */ 150,
-    /* height:            */ 150,
-    /* hurtboxRadius:     */ 150,
-    /* hurtboxHeight:     */ 150,
+    /* radius:            */ 129,
+    /* offset:            */ 18,
+    /* hurtboxRadius:     */ 109,
+    /* hurtboxOffset:     */ 20,
 };
 
 void bhv_unagi_init(void) {
@@ -140,8 +139,7 @@ void unagi_act_3(void) {
         }
     }
 
-    o->oPosX = o->oHomeX + o->oUnagiDistFromHome * sins(o->oMoveAngleYaw);
-    o->oPosZ = o->oHomeZ + o->oUnagiDistFromHome * coss(o->oMoveAngleYaw);
+    obj_offset_forward(o, &o->oPosVec, &o->oHomeVec, o->oMoveAngleYaw, o->oUnagiDistFromHome, 0.0f);
 }
 
 void bhv_unagi_loop(void) {
@@ -184,12 +182,10 @@ void bhv_unagi_subobject_loop(void) {
     } else {
         f32 offset = 300.0f * o->oBehParams2ndByte;
 
-        o->oPosY = o->parentObj->oPosY - offset * sins(o->parentObj->oFaceAnglePitch) * 1.13f;
-
-        offset = coss(o->parentObj->oFaceAnglePitch / 2) * offset;
-
-        o->oPosX = o->parentObj->oPosX + offset * sins(o->parentObj->oFaceAngleYaw);
-        o->oPosZ = o->parentObj->oPosZ + offset * coss(o->parentObj->oFaceAngleYaw);
+        struct Object *parent = o->parentObj;
+        f32 up = -offset * sins(parent->oFaceAnglePitch) * 1.13f;
+        obj_offset_forward(parent, &o->oPosVec, &parent->oPosVec, parent->oFaceAngleYaw,
+                           coss(parent->oFaceAnglePitch / 2) * offset, up);
 
         if (o->oBehParams2ndByte == UNAGI_PART_BP_BACK) {
             if (o->parentObj->oAnimState != UNAGI_ANIM_STATE_NO_STAR && o->oDistanceToMario < 150.0f) {

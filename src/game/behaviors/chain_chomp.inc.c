@@ -19,14 +19,13 @@
  */
 static struct ObjectHitbox sChainChompHitbox = {
     /* interactType:      */ INTERACT_MR_BLIZZARD,
-    /* downOffset:        */ 0,
     /* damageOrCoinValue: */ 3,
     /* health:            */ 1,
     /* numLootCoins:      */ 0,
-    /* radius:            */ 80,
-    /* height:            */ 160,
-    /* hurtboxRadius:     */ 80,
-    /* hurtboxHeight:     */ 160,
+    /* radius:            */ 79,
+    /* offset:            */ 80,
+    /* hurtboxRadius:     */ 62,
+    /* hurtboxOffset:     */ 80,
 };
 
 /**
@@ -96,10 +95,9 @@ static void chain_chomp_update_chain_segments(void) {
         struct ChainSegment *segment     = &o->oChainChompSegments[i];
 
         // Apply gravity
-        segment->pos[1] += o->oVelY < 0.0f ? o->oVelY : -20.0f;
-        if (segment->pos[1] < 0.0f) {
-            segment->pos[1] = 0.0f;
-        }
+        obj_add_up(o, segment->pos, o->oVelY < 0.0f ? o->oVelY : -20.0f);
+        f32 height = obj_height(o, segment->pos);
+        if (height < 0.0f) obj_add_up(o, segment->pos, -height);
 
         // Cap distance to previous chain part (so that the tail follows the chomp)
         Vec3f offset;
@@ -191,7 +189,7 @@ static void chain_chomp_sub_act_lunge(void) {
         o->oTimer = 0;
     } else {
         // Turn toward pivot
-        cur_obj_rotate_yaw_toward(atan2s(o->oChainChompSegments[0].pos[2], o->oChainChompSegments[0].pos[0]), 0x1000);
+        cur_obj_rotate_yaw_toward(obj_yaw_from_direction(o, o->oChainChompSegments[0].pos), 0x1000);
 
         if (o->oChainChompSignedMaxDistBetweenChainParts != 0.0f) {
             approach_f32_ptr(&o->oChainChompSignedMaxDistBetweenChainParts, 0.0f, 0.8f);
@@ -374,9 +372,9 @@ static void chain_chomp_act_move(void) {
                 o->oChainChompRestrictedByChain = TRUE;
             } else {
                 // Move pivot like the chain chomp is pulling it along
-                f32 oldPivotY = o->parentObj->oPosY;
+                f32 oldHeight = obj_height(o->parentObj, &o->parentObj->oPosVec);
                 vec3_diff(&o->parentObj->oPosVec, &o->oPosVec, o->oChainChompSegments[0].pos);
-                o->parentObj->oVelY = o->parentObj->oPosY - oldPivotY;
+                o->parentObj->oVelY = obj_height(o->parentObj, &o->parentObj->oPosVec) - oldHeight;
             }
         } else {
             o->oChainChompRestrictedByChain = FALSE;
@@ -454,7 +452,7 @@ void bhv_wooden_post_update(void) {
     }
 
     if (o->oWoodenPostOffsetY != 0.0f) {
-        o->oPosY = o->oHomeY + o->oWoodenPostOffsetY;
+        obj_set_height(o, &o->oPosVec, obj_height(o, &o->oHomeVec) + o->oWoodenPostOffsetY);
     } else if (!GET_BPARAM3(o->oBehParams)) { // Whether the post has coins or not
         // Reset the timer once mario is far enough
         if (o->oDistanceToMario > 400.0f) {

@@ -49,7 +49,7 @@ void bhv_bowser_bomb_smoke_loop(void) {
         o->oOpacity = 0;
     }
 
-    o->oPosY += o->oVelY;
+    obj_add_up(o, &o->oPosVec, o->oVelY);
 
     if (o->oTimer == 28) {
         o->activeFlags = ACTIVE_FLAG_DEACTIVATED;

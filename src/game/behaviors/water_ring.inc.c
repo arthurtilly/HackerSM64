@@ -125,7 +125,7 @@ void water_ring_act_not_collected(void) {
     water_ring_check_collection(avgScale, ringSpawner);
     water_ring_set_scale(avgScale);
 
-    o->oPosY += 10.0f;
+    obj_add_up(o, &o->oPosVec, 10.0f);
     o->oFaceAngleYaw += 0x100;
     set_object_visibility(o, 5000);
 

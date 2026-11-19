@@ -14,14 +14,13 @@
  */
 static struct ObjectHitbox sWaterBombHitbox = {
     /* interactType:      */ INTERACT_MR_BLIZZARD,
-    /* downOffset:        */ 25,
     /* damageOrCoinValue: */ 1,
     /* health:            */ 99,
     /* numLootCoins:      */ 0,
-    /* radius:            */ 80,
-    /* height:            */ 50,
-    /* hurtboxRadius:     */ 60,
-    /* hurtboxHeight:     */ 50,
+    /* radius:            */ 63,
+    /* offset:            */ 0,
+    /* hurtboxRadius:     */ 49,
+    /* hurtboxOffset:     */ 0,
 };
 
 /**
@@ -34,7 +33,7 @@ void bhv_water_bomb_spawner_update(void) {
 
     // When mario is in range and a water bomb isn't already active
     if (!o->oWaterBombSpawnerBombActive && latDistToMario < spawnerRadius
-        && gMarioObject->oPosY - o->oPosY < 1000.0f) {
+        && obj_height_difference(o, &gMarioObject->oPosVec, &o->oPosVec) < 1000.0f) {
         if (o->oWaterBombSpawnerTimeToSpawn != 0) {
             o->oWaterBombSpawnerTimeToSpawn--;
         } else {
@@ -47,10 +46,10 @@ void bhv_water_bomb_spawner_update(void) {
 
                 waterBomb->oAction = WATER_BOMB_ACT_INIT;
 
-                waterBomb->oPosX =
-                    gMarioObject->oPosX + waterBombDistToMario * sins(gMarioObject->oMoveAngleYaw);
-                waterBomb->oPosZ =
-                    gMarioObject->oPosZ + waterBombDistToMario * coss(gMarioObject->oMoveAngleYaw);
+                f32 height = obj_height(o, &waterBomb->oPosVec);
+                obj_offset_forward(gMarioObject, &waterBomb->oPosVec, &gMarioObject->oPosVec,
+                                   gMarioObject->oMoveAngleYaw, waterBombDistToMario, 0.0f);
+                obj_set_height(o, &waterBomb->oPosVec, height);
 
                 spawn_object(waterBomb, MODEL_WATER_BOMB_SHADOW, bhvWaterBombShadow);
 
@@ -240,13 +239,13 @@ void bhv_water_bomb_shadow_update(void) {
         obj_mark_for_deletion(o);
     } else {
         // HACKERSM64_DO: What is happening here
-        f32 bombHeight = o->parentObj->oPosY - o->parentObj->oFloorHeight;
+        f32 bombHeight = obj_height(o->parentObj, &o->parentObj->oPosVec) - o->parentObj->oFloorHeight;
         if (bombHeight > 500.0f) {
             bombHeight = 500.0f;
         }
 
         obj_copy_pos(o, o->parentObj);
-        o->oPosY = o->parentObj->oFloorHeight + bombHeight;
+        obj_set_height(o->parentObj, &o->oPosVec, o->parentObj->oFloorHeight + bombHeight);
         obj_copy_scale(o, o->parentObj);
     }
 }

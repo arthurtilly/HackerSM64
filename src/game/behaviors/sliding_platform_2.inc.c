@@ -44,7 +44,7 @@ void bhv_sliding_platform_loop(void) {
     obj_perform_position_op(POS_OP_SAVE_POSITION);
 
     if (o->oBackAndForthPlatformDirection != 0.0f) {
-        o->oPosY = o->oHomeY + o->oBackAndForthPlatformDistance * o->oBackAndForthPlatformDirection;
+        obj_set_height(o, &o->oPosVec, obj_height(o, &o->oHomeVec) + o->oBackAndForthPlatformDistance * o->oBackAndForthPlatformDirection);
     } else {
         obj_set_dist_from_home(o->oBackAndForthPlatformDistance);
     }

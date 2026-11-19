@@ -1,7 +1,7 @@
 // spindel.inc.c
 
 void bhv_spindel_init(void) {
-    o->oHomeY = o->oPosY;
+    vec3_copy(&o->oHomeVec, &o->oPosVec);
     o->oSpindelMoveTimer = 0;
     o->oSpindelMoveDirection = 0;
 }
@@ -60,14 +60,14 @@ void bhv_spindel_loop(void) {
             o->oAngleVelPitch = -1024 / shake;
         }
 
-        o->oPosZ += o->oVelZ;
+        obj_offset_local(o, &o->oPosVec, &o->oPosVec, 0.0f, 0.0f, o->oVelZ);
         o->oMoveAnglePitch += o->oAngleVelPitch;
 
         if (absf(o->oMoveAnglePitch & 0x1fff) < 800.0f && o->oAngleVelPitch != 0) {
             cur_obj_play_sound_2(SOUND_GENERAL2_SPINDEL_ROLL);
         }
 
-        o->oPosY = o->oHomeY + absf(sins(o->oMoveAnglePitch * 4) * 23.0f);
+        obj_set_height(o, &o->oPosVec, obj_height(o, &o->oHomeVec) + absf(sins(o->oMoveAnglePitch * 4) * 23.0f));
         if (o->oTimer + 1 == shake * 8) {
             set_camera_shake_from_point(SHAKE_POS_SMALL, o->oPosX, o->oPosY, o->oPosZ);
         }

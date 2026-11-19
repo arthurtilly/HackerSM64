@@ -14,6 +14,7 @@
 #define CELL_HEIGHT_LIMIT            20000
 #define FLOOR_LOWER_LIMIT           -11000
 #define FLOOR_LOWER_LIMIT_MISC      (FLOOR_LOWER_LIMIT + 1000)
+#define LEVEL_RAY_LENGTH            (4.0f * LEVEL_BOUNDARY_MAX + 2.0f * CELL_HEIGHT_LIMIT)
 
 #define is_outside_level_bounds(xPos, zPos) \
     (((xPos) <= -LEVEL_BOUNDARY_MAX) ||     \
@@ -30,6 +31,7 @@ enum CollisionFlags {
     COLLISION_FLAG_CAMERA             = (1 << 2),
     COLLISION_FLAG_INCLUDE_INTANGIBLE = (1 << 3),
     COLLISION_FLAG_EXCLUDE_DYNAMIC    = (1 << 4),
+    COLLISION_FLAG_WATER_ONLY         = (1 << 5),
 };
 
 // On a miss surface is NULL. The remaining fields describe a successful hit.
@@ -70,8 +72,8 @@ s32 sweep_actor(const Vec3f pos, const Vec3f move, const Vec3f up, const struct 
 // minFacing is the minimum dot product between the face normal and the reverse ray.
 f32 collision_raycast(const Vec3f origin, const Vec3f direction, f32 length, f32 minFacing,
                       s32 flags, struct SurfaceContact *hit);
-f32 find_floor_hit(f32 x, f32 y, f32 z, struct SurfaceContact *hit);
-f32 find_actor_ceil(const Vec3f pos, f32 floorHeight, f32 clearance, struct SurfaceContact *hit);
+f32 find_actor_floor(const struct Object *obj, const Vec3f pos, f32 offset, struct SurfaceContact *hit);
+f32 find_actor_ceil(const struct Object *obj, const Vec3f pos, f32 floorHeight, f32 clearance, struct SurfaceContact *hit);
 
 // Steep faces push the actor. maxContactUp tests both the face and the direction
 // of edge contact. Use 1 to report every push or WALL_KICK_MAX_UP for a vertical wall.
@@ -84,19 +86,20 @@ static ALWAYS_INLINE s32 resolve_wall_sphere(Vec3f pos, const Vec3f up, f32 offs
     return resolve_wall_spheres(pos, up, &sphere, 1, maxContactUp, hit);
 }
 
+static ALWAYS_INLINE s32 resolve_actor_wall(const struct Object *obj, Vec3f pos, f32 offset, f32 radius,
+                                           f32 maxContactUp, struct SurfaceContact *hit) {
+    Vec3f up = { -obj->gravityDir[0], -obj->gravityDir[1], -obj->gravityDir[2] };
+    return resolve_wall_sphere(pos, up, offset, radius, maxContactUp, hit);
+}
+
 s32 f32_find_wall_collision(f32 *xPtr, f32 *yPtr, f32 *zPtr, f32 offsetY, f32 radius);
 f32 find_ceil(f32 posX, f32 posY, f32 posZ, struct Surface **pceil);
-
-// Finds the ceiling from a vec3f and a minimum height (with 3 unit vertical buffer).
-ALWAYS_INLINE f32 find_mario_ceil(Vec3f pos, f32 height, struct Surface **ceil) {
-    return find_ceil(pos[0], MAX(height, pos[1]) + 3.0f, pos[2], ceil);
-}
 
 f32 find_floor_height(f32 x, f32 y, f32 z);
 f32 find_floor(f32 xPos, f32 yPos, f32 zPos, struct Surface **pfloor);
 f32 find_room_floor(f32 x, f32 y, f32 z, struct Surface **pfloor);
 s32 get_room_at_pos(f32 x, f32 y, f32 z);
-s32 find_water_level_and_floor(s32 x, s32 y, s32 z, struct Surface **pfloor);
+f32 raycast_water_surface(const Vec3f origin, const Vec3f dir, f32 length, Vec3f normal);
 s32 find_water_level(s32 x, s32 z);
 s32 find_poison_gas_level(s32 x, s32 z);
 #ifdef VANILLA_DEBUG

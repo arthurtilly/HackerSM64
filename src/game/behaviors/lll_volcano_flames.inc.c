@@ -4,8 +4,7 @@ void bhv_volcano_flames_loop(void) {
     cur_obj_update_floor_height();
     cur_obj_compute_vel_xz();
 
-    o->oPosX += o->oVelX;
-    o->oPosZ += o->oVelZ;
+    obj_offset_local(o, &o->oPosVec, &o->oPosVec, o->oVelX, 0.0f, o->oVelZ);
 
     cur_obj_move_y(-4.0f, -0.7f, 2.0f);
 

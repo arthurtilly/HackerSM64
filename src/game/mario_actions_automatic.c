@@ -7,6 +7,7 @@
 #include "area.h"
 #include "mario.h"
 #include "mario_step.h"
+#include "object_collision.h"
 #include "engine/math_util.h"
 #include "memory.h"
 #include "engine/graph_node.h"
@@ -25,7 +26,7 @@ void add_tree_leaf_particles(struct MarioState *m) {
     if (m->usedObj->behavior == segmented_to_virtual(bhvTree)) {
         // make leaf effect spawn higher on the Shifting Sand Land palm tree
         f32 leafHeight = (obj_has_model(m->usedObj, MODEL_SSL_PALM_TREE) ? 250.0f : 100.0f);
-        if (m->pos[1] - m->floorHeight > leafHeight) {
+        if (obj_height(m->marioObj, m->pos) - m->floorHeight > leafHeight) {
             m->particleFlags |= PARTICLE_LEAF;
         }
     }
@@ -46,37 +47,37 @@ void play_climbing_sounds(struct MarioState *m, s32 b) {
 }
 
 s32 set_pole_position(struct MarioState *m, f32 offsetY) {
-    struct Surface *ceil, *floor;
+    struct SurfaceContact ceil, floor;
     s32 result = POLE_NONE;
-    f32 poleTop = m->usedObj->hitboxHeight - 100.0f;
+    f32 poleTop = obj_trigger_top(m->usedObj) - 100.0f;
     struct Object *marioObj = m->marioObj;
 
     if (marioObj->oMarioPolePos > poleTop) {
         marioObj->oMarioPolePos = poleTop;
     }
 
-    vec3f_copy_y_off(m->pos, &m->usedObj->oPosVec, marioObj->oMarioPolePos + offsetY);
+    obj_sphere_center(m->usedObj, &m->usedObj->oPosVec, marioObj->oMarioPolePos + offsetY, m->pos);
 
-    s32 collided = f32_find_wall_collision(&m->pos[0], &m->pos[1], &m->pos[2], 60.0f, 50.0f)
-                 + f32_find_wall_collision(&m->pos[0], &m->pos[1], &m->pos[2], 30.0f, 24.0f);
-
-    f32 ceilHeight = find_mario_ceil(m->pos, m->pos[1], &ceil);
-    if (ceil != NULL && m->pos[1] > ceilHeight - 160.0f) {
-        m->pos[1] = ceilHeight - 160.0f;
-        marioObj->oMarioPolePos = m->pos[1] - m->usedObj->oPosY;
+    s32 collided = resolve_actor_wall(marioObj, m->pos, 60.0f, 50.0f, 1.0f, NULL);
+    collided |= resolve_actor_wall(marioObj, m->pos, 30.0f, 24.0f, 1.0f, NULL);
+    f32 height = obj_height(marioObj, m->pos);
+    f32 ceilHeight = find_actor_ceil(marioObj, m->pos, height, 160.0f, &ceil);
+    if (ceil.surface != NULL) {
+        obj_set_height(marioObj, m->pos, ceilHeight - 160.0f);
+        marioObj->oMarioPolePos = obj_local_height(m->usedObj, m->pos);
     }
 
-    f32 floorHeight = find_floor(m->pos[0], m->pos[1], m->pos[2], &floor);
-    if (floor != NULL && m->pos[1] < floorHeight) {
-        m->pos[1] = floorHeight;
+    f32 floorHeight = find_actor_floor(m->marioObj, m->pos, 0.0f, &floor);
+    if (floor.surface != NULL && obj_height(marioObj, m->pos) < floorHeight) {
+        obj_set_height(m->marioObj, m->pos, floorHeight);
         set_mario_action(m, ACT_IDLE, 0);
         result = POLE_TOUCHED_FLOOR;
-    } else if (marioObj->oMarioPolePos < -m->usedObj->hitboxDownOffset) {
-        m->pos[1] = m->usedObj->oPosY - m->usedObj->hitboxDownOffset;
+    } else if (marioObj->oMarioPolePos < obj_trigger_bottom(m->usedObj)) {
+        obj_sphere_center(m->usedObj, &m->usedObj->oPosVec, obj_trigger_bottom(m->usedObj), m->pos);
         set_mario_action(m, ACT_FREEFALL, 0);
         result = POLE_FELL_OFF;
     } else if (collided) {
-        if (floor == NULL || m->pos[1] > floorHeight + 20.0f) {
+        if (floor.surface == NULL || obj_height(marioObj, m->pos) > floorHeight + 20.0f) {
             m->forwardVel = -2.0f;
             set_mario_action(m, ACT_SOFT_BONK, 0);
             result = POLE_FELL_OFF;
@@ -109,7 +110,7 @@ s32 act_holding_pole(struct MarioState *m) {
     }
 
     if (m->controller->stickY > 16.0f) {
-        f32 poleTop = m->usedObj->hitboxHeight - 100.0f;
+        f32 poleTop = obj_trigger_top(m->usedObj) - 100.0f;
         const BehaviorScript *poleBehavior = virtual_to_segmented(SEGMENT_BEHAVIOR_DATA, m->usedObj->behavior);
 
         if (marioObj->oMarioPolePos < poleTop - 0.4f) {
@@ -148,7 +149,7 @@ s32 act_holding_pole(struct MarioState *m) {
 
 s32 act_climbing_pole(struct MarioState *m) {
     struct Object *marioObj = m->marioObj;
-    s16 cameraAngle = m->area->camera->yaw;
+    s16 cameraAngle = obj_yaw_in_frame(m->marioObj, NULL, m->area->camera->yaw);
 
     if (m->health < 0x100) {
         add_tree_leaf_particles(m);
@@ -252,18 +253,18 @@ s32 act_top_of_pole(struct MarioState *m) {
 s32 perform_hanging_step(struct MarioState *m, Vec3f nextPos) {
     struct SurfaceContact floor;
     struct SurfaceContact wall, ceil;
-    resolve_wall_sphere(nextPos, gVec3fY, 50.0f, 50.0f, WALL_KICK_MAX_UP, &wall);
+    resolve_actor_wall(m->marioObj, nextPos, 50.0f, 50.0f, WALL_KICK_MAX_UP, &wall);
     set_mario_wall(m, &wall);
 
     if (is_outside_level_bounds(nextPos[0], nextPos[2])) return HANG_HIT_CEIL_OR_OOB;
 
-    f32 floorHeight = find_floor_hit(nextPos[0], nextPos[1], nextPos[2], &floor);
-    f32 ceilHeight = find_actor_ceil(nextPos, floorHeight, HANG_DISTANCE + 30.0f, &ceil);
+    f32 floorHeight = find_actor_floor(m->marioObj, nextPos, 0.0f, &floor);
+    f32 ceilHeight = find_actor_ceil(m->marioObj, nextPos, floorHeight, HANG_DISTANCE + 30.0f, &ceil);
 
     if (ceil.surface == NULL || ceil.type != SURFACE_HANGABLE) return HANG_LEFT_CEIL;
     if (floor.surface != NULL && ceilHeight - floorHeight <= HANG_DISTANCE) return HANG_HIT_CEIL_OR_OOB;
 
-    f32 ceilOffset = ceilHeight - (nextPos[1] + HANG_DISTANCE);
+    f32 ceilOffset = ceilHeight - (obj_height(m->marioObj, nextPos) + HANG_DISTANCE);
     if (ceilOffset < -30.0f) {
         return HANG_HIT_CEIL_OR_OOB;
     }
@@ -271,7 +272,7 @@ s32 perform_hanging_step(struct MarioState *m, Vec3f nextPos) {
         return HANG_LEFT_CEIL;
     }
 
-    nextPos[1] = ceilHeight - HANG_DISTANCE;
+    obj_set_height(m->marioObj, nextPos, ceilHeight - HANG_DISTANCE);
     vec3f_copy(m->pos, nextPos);
 
     set_mario_floor(m, &floor, floorHeight);
@@ -319,9 +320,8 @@ s32 update_hang_moving(struct MarioState *m) {
     m->vel[1] = 0.0f;
     m->vel[2] = m->slideVelZ;
 
-    nextPos[0] = m->pos[0] - m->ceil->normal.y * m->vel[0];
-    nextPos[2] = m->pos[2] - m->ceil->normal.y * m->vel[2];
-    nextPos[1] = m->pos[1];
+    f32 speedScale = -obj_normal_up(m->marioObj, m->ceil->normal);
+    obj_offset_local(m->marioObj, nextPos, m->pos, m->vel[0] * speedScale, 0.0f, m->vel[2] * speedScale);
 
     s32 stepResult = perform_hanging_step(m, nextPos);
 
@@ -335,7 +335,7 @@ void update_hang_stationary(struct MarioState *m) {
     m->slideVelX = 0.0f;
     m->slideVelZ = 0.0f;
 
-    m->pos[1] = m->ceilHeight - HANG_DISTANCE;
+    obj_set_height(m->marioObj, m->pos, m->ceilHeight - HANG_DISTANCE);
     vec3f_copy(m->vel, gVec3fZero);
     vec3f_copy(m->marioObj->header.gfx.pos, m->pos);
 #ifdef BETTER_HANGING
@@ -496,15 +496,14 @@ s32 act_hang_moving(struct MarioState *m) {
 s32 let_go_of_ledge(struct MarioState *m) {
     m->vel[1] = 0.0f;
     m->forwardVel = -8.0f;
-    m->pos[0] -= 60.0f * sins(m->faceAngle[1]);
-    m->pos[2] -= 60.0f * coss(m->faceAngle[1]);
+    obj_offset_forward(m->marioObj, m->pos, m->pos, m->faceAngle[1], -60.0f, 0.0f);
 
-    struct Surface *floor;
-    f32 floorHeight = find_floor(m->pos[0], m->pos[1], m->pos[2], &floor);
-    if (floor == NULL || floorHeight < m->pos[1] - 100.0f) {
-        m->pos[1] -= 100.0f;
+    struct SurfaceContact floor;
+    f32 floorHeight = find_actor_floor(m->marioObj, m->pos, 0.0f, &floor);
+    if (floor.surface == NULL || floorHeight < obj_height(m->marioObj, m->pos) - 100.0f) {
+        obj_add_up(m->marioObj, m->pos, -100.0f);
     } else {
-        m->pos[1] = floorHeight;
+        obj_set_height(m->marioObj, m->pos, floorHeight);
     }
 
     return set_mario_action(m, ACT_SOFT_BONK, 0);
@@ -512,17 +511,14 @@ s32 let_go_of_ledge(struct MarioState *m) {
 
 void climb_up_ledge(struct MarioState *m) {
     set_mario_animation(m, MARIO_ANIM_IDLE_HEAD_LEFT);
-    m->pos[0] += 14.0f * sins(m->faceAngle[1]);
-    m->pos[2] += 14.0f * coss(m->faceAngle[1]);
+    obj_offset_forward(m->marioObj, m->pos, m->pos, m->faceAngle[1], 14.0f, 0.0f);
     vec3f_copy(m->marioObj->header.gfx.pos, m->pos);
 }
 
 void update_ledge_climb_camera(struct MarioState *m) {
     f32 dist = MIN(m->actionTimer, 14.0f);
 
-    m->statusForCamera->pos[0] = m->pos[0] + dist * sins(m->faceAngle[1]);
-    m->statusForCamera->pos[2] = m->pos[2] + dist * coss(m->faceAngle[1]);
-    m->statusForCamera->pos[1] = m->pos[1];
+    obj_offset_forward(m->marioObj, m->statusForCamera->pos, m->pos, m->faceAngle[1], dist, 0.0f);
     m->actionTimer++;
     m->flags |= MARIO_LEDGE_CLIMB_CAMERA;
 }
@@ -580,7 +576,7 @@ s32 act_ledge_grab(struct MarioState *m) {
         }
     }
 
-    heightAboveFloor = m->pos[1] - find_floor_height_relative_polar(m, -0x8000, 30.0f);
+    heightAboveFloor = obj_height(m->marioObj, m->pos) - find_floor_height_relative_polar(m, -0x8000, 30.0f);
     if (hasSpaceForMario && heightAboveFloor < 100.0f) {
         return set_mario_action(m, ACT_LEDGE_CLIMB_FAST, 0);
     }
@@ -655,7 +651,7 @@ s32 act_grabbed(struct MarioState *m) {
     if (m->marioObj->oInteractStatus & INT_STATUS_MARIO_THROWN_BY_OBJ) {
         s32 thrown = (m->marioObj->oInteractStatus & INT_STATUS_MARIO_DROPPED_BY_OBJ) == 0;
 
-        m->faceAngle[1] = m->usedObj->oMoveAngleYaw;
+        m->faceAngle[1] = obj_convert_launch(m->marioObj, m->usedObj, m->usedObj->oMoveAngleYaw, &m->forwardVel, &m->vel[1]);
         vec3f_copy(m->pos, m->marioObj->header.gfx.pos);
         queue_rumble_data(5, 60);
 
@@ -681,7 +677,8 @@ s32 act_in_cannon(struct MarioState *m) {
             m->statusForCamera->usedObj = m->usedObj;
 
             vec3_zero(m->vel);
-            vec3f_copy_y_off(m->pos, &m->usedObj->oPosVec, 350.0f);
+            vec3_copy(m->pos, &m->usedObj->oPosVec);
+            obj_add_up(m->usedObj, m->pos, 350.0f);
 
             m->forwardVel = 0.0f;
 
@@ -691,9 +688,9 @@ s32 act_in_cannon(struct MarioState *m) {
         case ACT_STATE_IN_CANNON_WAIT_FOR_CANNON:
             if (m->usedObj->oAction == OPENED_CANNON_ACT_READY) {
                 m->faceAngle[0] = m->usedObj->oMoveAnglePitch;
-                m->faceAngle[1] = m->usedObj->oMoveAngleYaw;
+                m->faceAngle[1] = obj_yaw_in_frame(m->marioObj, m->usedObj, m->usedObj->oMoveAngleYaw);
 
-                marioObj->oMarioCannonObjectYaw = m->usedObj->oMoveAngleYaw;
+                marioObj->oMarioCannonObjectYaw = obj_yaw_in_frame(m->marioObj, m->usedObj, m->usedObj->oMoveAngleYaw);
                 marioObj->oMarioCannonInputYaw  = 0x0;
 
                 m->actionState = ACT_STATE_IN_CANNON_READY;
@@ -717,9 +714,7 @@ s32 act_in_cannon(struct MarioState *m) {
 
                 cosPitch *= 120.0f;
 
-                m->pos[0] += cosPitch * sins(m->faceAngle[1]);
-                m->pos[1] += 120.0f * sinPitch;
-                m->pos[2] += cosPitch * coss(m->faceAngle[1]);
+                obj_offset_forward(marioObj, m->pos, m->pos, m->faceAngle[1], cosPitch, 120.0f * sinPitch);
 
                 play_sound(SOUND_ACTION_FLYING_FAST, marioObj->header.gfx.cameraToObject);
                 play_sound(SOUND_OBJ_POUNDING_CANNON, marioObj->header.gfx.cameraToObject);
@@ -753,8 +748,9 @@ s32 act_tornado_twirling(struct MarioState *m) {
     struct Object *usedObj = m->usedObj;
     s16 prevTwirlYaw = m->twirlYaw;
 
-    f32 dx = (m->pos[0] - usedObj->oPosX) * 0.95f;
-    f32 dz = (m->pos[2] - usedObj->oPosZ) * 0.95f;
+    Vec3f delta;
+    obj_local_delta(usedObj, delta, m->pos, &usedObj->oPosVec);
+    f32 dx = delta[0] * 0.95f, dz = delta[2] * 0.95f;
 
     if (m->vel[1] < 60.0f) {
         m->vel[1] += 1.0f;
@@ -763,7 +759,7 @@ s32 act_tornado_twirling(struct MarioState *m) {
     if ((marioObj->oMarioTornadoPosY += m->vel[1]) < 0.0f) {
         marioObj->oMarioTornadoPosY = 0.0f;
     }
-    if (marioObj->oMarioTornadoPosY > usedObj->hitboxHeight) {
+    if (marioObj->oMarioTornadoPosY > obj_trigger_top(usedObj)) {
         if (m->vel[1] < 20.0f) {
             m->vel[1] = 20.0f;
         }
@@ -783,17 +779,15 @@ s32 act_tornado_twirling(struct MarioState *m) {
     sinAngleVel = sins(marioObj->oMarioTornadoYawVel);
     cosAngleVel = coss(marioObj->oMarioTornadoYawVel);
 
-    nextPos[0] = usedObj->oPosX + dx * cosAngleVel + dz * sinAngleVel;
-    nextPos[2] = usedObj->oPosZ - dx * sinAngleVel + dz * cosAngleVel;
-    nextPos[1] = usedObj->oPosY + marioObj->oMarioTornadoPosY;
-
-    f32_find_wall_collision(&nextPos[0], &nextPos[1], &nextPos[2], 60.0f, 50.0f);
+    obj_offset_local(usedObj, nextPos, &usedObj->oPosVec, dx * cosAngleVel + dz * sinAngleVel,
+                     marioObj->oMarioTornadoPosY, dz * cosAngleVel - dx * sinAngleVel);
+    resolve_actor_wall(marioObj, nextPos, 60.0f, 50.0f, 1.0f, NULL);
 
     if (is_outside_level_bounds(nextPos[0], nextPos[2])) {
         nextPos[0] = m->pos[0];
         nextPos[2] = m->pos[2];
     }
-    floorHeight = find_floor_hit(nextPos[0], nextPos[1], nextPos[2], &floor);
+    floorHeight = find_actor_floor(m->marioObj, nextPos, 0.0f, &floor);
     set_mario_floor(m, &floor, floorHeight);
     vec3f_copy(m->pos, nextPos);
 

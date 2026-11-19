@@ -621,6 +621,98 @@ u16 random_u16(void);
 f32 random_float(void);
 s32 random_sign(void);
 
+extern const Quat gQuatIdentity;
+static ALWAYS_INLINE void quat_from_yaw(Quat *dest, s16 yaw) {
+    *dest = (Quat) { 0, sins(yaw >> 1), 0, coss(yaw >> 1) };
+}
+void quat_mul(Quat *dest, const Quat *a, const Quat *b);
+void quat_normalize(Quat *q);
+void quat_from_zxy(Quat *dest, const Vec3s angle);
+void quat_from_to(Quat *dest, const Vec3f from, const Vec3f to, const Vec3f halfTurnAxis);
+void quat_from_up_forward(Quat *dest, const Vec3f up, const Vec3f forward);
+void quat_rotate_vec3f(Vec3f dest, const Quat *q, const Vec3f v);
+// Positions are world-space. Velocities, yaw and support heights use the actor's gravity frame.
+static inline void obj_local_to_world(const struct Object *obj, Vec3f dest, const Vec3f local) {
+    if (obj->header.gfx.transformFlags & GRAPH_OBJ_GRAVITY_FRAME) {
+        quat_rotate_vec3f(dest, &obj->gravityFrame, local);
+    } else {
+        vec3_copy(dest, local);
+    }
+}
+
+static inline void obj_world_to_local(const struct Object *obj, Vec3f dest, const Vec3f world) {
+    if (obj->header.gfx.transformFlags & GRAPH_OBJ_GRAVITY_FRAME) {
+        const Quat *q = &obj->gravityFrame;
+        Quat inverse = { -q->x, -q->y, -q->z, q->w };
+        quat_rotate_vec3f(dest, &inverse, world);
+    } else {
+        vec3_copy(dest, world);
+    }
+}
+
+static inline void obj_local_delta(const struct Object *obj, Vec3f delta, const Vec3f pos, const Vec3f origin) {
+    vec3_diff(delta, pos, origin);
+    obj_world_to_local(obj, delta, delta);
+}
+
+static inline f32 obj_height(const struct Object *obj, const Vec3f pos) {
+    if (!(obj->header.gfx.transformFlags & GRAPH_OBJ_GRAVITY_FRAME)) return pos[1];
+    return -vec3_dot(obj->gravityDir, pos);
+}
+
+static inline f32 obj_height_difference(const struct Object *obj, const Vec3f pos, const Vec3f origin) {
+    Vec3f delta;
+    vec3_diff(delta, pos, origin);
+    return obj_height(obj, delta);
+}
+
+// World Y of the point reached by moving along this actor's up axis to height.
+static inline f32 obj_world_y_at_height(const struct Object *obj, const Vec3f pos, f32 height) {
+    if (obj->gravityDir[1] == -1.0f) return height;
+    return pos[1] - obj->gravityDir[1] * (height - obj_height(obj, pos));
+}
+
+static inline void obj_add_up(const struct Object *obj, Vec3f pos, f32 distance) {
+    if (!(obj->header.gfx.transformFlags & GRAPH_OBJ_GRAVITY_FRAME)) {
+        pos[1] += distance;
+    } else {
+        for (s32 i = 0; i < 3; i++) pos[i] -= obj->gravityDir[i] * distance;
+    }
+}
+
+static inline void obj_offset_up(const struct Object *obj, Vec3f dest, const Vec3f origin, f32 distance) {
+    vec3_copy(dest, origin);
+    obj_add_up(obj, dest, distance);
+}
+
+static inline void obj_set_height(const struct Object *obj, Vec3f pos, f32 height) {
+    if (!(obj->header.gfx.transformFlags & GRAPH_OBJ_GRAVITY_FRAME)) pos[1] = height;
+    else obj_add_up(obj, pos, height - obj_height(obj, pos));
+}
+
+static inline void obj_offset_local(const struct Object *obj, Vec3f dest, const Vec3f origin, f32 x, f32 y, f32 z) {
+    Vec3f delta = { x, y, z };
+    if (obj->header.gfx.transformFlags & GRAPH_OBJ_GRAVITY_FRAME) quat_rotate_vec3f(delta, &obj->gravityFrame, delta);
+    vec3_sum(dest, origin, delta);
+}
+
+static inline void obj_offset_forward(const struct Object *obj, Vec3f dest, const Vec3f origin, s16 yaw, f32 forward, f32 up) {
+    obj_offset_local(obj, dest, origin, sins(yaw) * forward, up, coss(yaw) * forward);
+}
+
+static inline struct Normal obj_local_normal(const struct Object *obj, struct Normal n) {
+    if (!(obj->header.gfx.transformFlags & GRAPH_OBJ_GRAVITY_FRAME)) return n;
+    Vec3f local = { n.x, n.y, n.z };
+    obj_world_to_local(obj, local, local);
+    return (struct Normal){ local[0], local[1], local[2] };
+}
+
+static inline f32 obj_normal_up(const struct Object *obj, struct Normal n) {
+    if (!(obj->header.gfx.transformFlags & GRAPH_OBJ_GRAVITY_FRAME)) return n.y;
+    return -(n.x * obj->gravityDir[0] + n.y * obj->gravityDir[1] + n.z * obj->gravityDir[2]);
+}
+
+void mtxf_from_quat(Mat4 dest, const Quat *q, const Vec3f pos);
 void mtxf_copy(Mat4 dest, Mat4 src);
 void mtxf_identity(Mat4 mtx);
 void mtxf_translate(Mat4 dest, Vec3f b);
@@ -631,8 +723,8 @@ void mtxf_rotate_zxy_and_translate_and_mul(Vec3s rot, Vec3f trans, Mat4 dest, Ma
 void mtxf_rotate_xyz_and_translate_and_mul(Vec3s rot, Vec3f trans, Mat4 dest, Mat4 src);
 void mtxf_billboard_generic(Mat4 dest, Mat4 mtx, Vec3f camera, Vec3f axis, Vec3f position, Vec3f scale, s16 angle, s32 isCylindrical);
 #define mtxf_billboard(dest, mtx, position, scale, angle) mtxf_billboard_generic(dest, mtx, gVec3fZero, gVec3fZero, position, scale, angle, FALSE)
-void mtxf_shadow(Mat4 dest, Vec3f upDir, Vec3f pos, Vec3f scale, s16 yaw);
-void mtxf_align_terrain_normal(Mat4 dest, Vec3f upDir, Vec3f pos, s16 yaw);
+void mtxf_shadow(Mat4 dest, const Vec3f normal, const Vec3f down, const Vec3f forward,
+                 const Vec3f pos, const Vec3f scale);
 void mtxf_align_terrain_triangle(Mat4 mtx, Vec3f pos, s16 yaw, f32 radius);
 void mtxf_mul(Mat4 dest, Mat4 a, Mat4 b);
 void mtxf_scale_vec3f(Mat4 dest, Mat4 mtx, Vec3f s);

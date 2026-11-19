@@ -4,7 +4,6 @@ void bhv_ddd_pole_init(void) {
     if (gCurrActNum == 1) {
         obj_mark_for_deletion(o);
     } else {
-        o->hitboxDownOffset = 100.0f;
         o->oDDDPoleMaxOffset = 100.0f * o->oBehParams2ndByte;
     }
 }

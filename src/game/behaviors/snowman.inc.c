@@ -2,14 +2,13 @@
 
 static struct ObjectHitbox sRollingSphereHitbox = {
     /* interactType:      */ INTERACT_DAMAGE,
-    /* downOffset:        */ 0,
     /* damageOrCoinValue: */ 3,
     /* health:            */ 0,
     /* numLootCoins:      */ 0,
-    /* radius:            */ 210,
-    /* height:            */ 350,
+    /* radius:            */ 188,
+    /* offset:            */ 173,
     /* hurtboxRadius:     */ 0,
-    /* hurtboxHeight:     */ 0,
+    /* hurtboxOffset:     */ 0,
 };
 
 static const Vec3f sSnowmanHeadPos = { -4230.0f, -1344.0f, 1813.0f };
@@ -30,7 +29,7 @@ void bhv_snowmans_bottom_init(void) {
 
 void set_rolling_sphere_hitbox(void) {
     obj_set_hitbox(o, &sRollingSphereHitbox);
-    o->oWallHitboxRadius = o->hitboxRadius;
+    o->oWallHitboxRadius = 210.0f * absf(o->header.gfx.scale[0]);
 
     if (o->oInteractStatus & INT_STATUS_INTERACTED) {
         o->oInteractStatus = INT_STATUS_NONE;
@@ -78,7 +77,9 @@ void snowmans_bottom_act_final_stretch(void) { // act 2
     o->oMoveAngleYaw = approach_s16_symmetric(o->oMoveAngleYaw, o->oSnowmansBottomTargetYaw, 0x400);
     if (is_point_close_to_object(o, sSnowmanHeadPos[0], sSnowmanHeadPos[1], sSnowmanHeadPos[2], 300)) {
         spawn_mist_particles_variable(0, 0, 70.0f);
-        o->oMoveAngleYaw = atan2s((sSnowmanHeadPos[2] - o->oPosZ), (sSnowmanHeadPos[0] - o->oPosX));
+        Vec3f delta;
+        vec3_diff(delta, sSnowmanHeadPos, &o->oPosVec);
+        o->oMoveAngleYaw = obj_yaw_from_direction(o, delta);
         o->oVelY = 80.0f;
         o->oForwardVel = 15.0f;
         o->oAction = SNOWMANS_BOTTOM_ACT_REACH_END;
@@ -104,8 +105,7 @@ void snowmans_bottom_act_reach_end(void) { // act 3
 
     if (o->oMoveFlags & OBJ_MOVE_MASK_ON_GROUND) {
         spawn_mist_particles_variable(0, 0, 70.0f);
-        o->oPosX = sSnowmanHeadPos[0];
-        o->oPosZ = sSnowmanHeadPos[2];
+        obj_offset_up(o, &o->oPosVec, sSnowmanHeadPos, obj_height_difference(o, &o->oPosVec, sSnowmanHeadPos));
         o->oForwardVel = 0.0f;
     }
 }
@@ -140,7 +140,7 @@ void bhv_snowmans_bottom_loop(void) {
             break;
 
         case SNOWMANS_BOTTOM_ACT_COLLISION:
-            cur_obj_push_mario_away_from_cylinder(o->hitboxRadius, 550);
+            cur_obj_push_mario_away_from_sphere(164.0f, 170.0f);
             break;
     }
 
@@ -177,8 +177,8 @@ void bhv_snowmans_head_loop(void) {
         case SNOWMANS_HEAD_ACT_JUMPING:
             cur_obj_update_floor_and_walls();
             cur_obj_move_standard(60);
-            if (o->oVelY <= 0.0f && o->oPosY < -994.0f) {
-                o->oPosY = -994.0f;
+            if (o->oVelY <= 0.0f && obj_height_difference(o, &o->oPosVec, sSnowmanHeadPos) < 350.0f) {
+                obj_offset_up(o, &o->oPosVec, sSnowmanHeadPos, 350.0f);
                 o->oAction = SNOWMANS_HEAD_ACT_THANK;
                 cur_obj_play_sound_2(SOUND_OBJ_SNOWMAN_EXPLODE);
                 play_puzzle_jingle();
@@ -194,7 +194,7 @@ void bhv_snowmans_head_loop(void) {
             break;
     }
 
-    cur_obj_push_mario_away_from_cylinder(180.0f, 150.0f);
+    cur_obj_push_mario_away_from_sphere(110.0f, 76.0f);
 }
 
 void bhv_snowmans_body_checkpoint_loop(void) {

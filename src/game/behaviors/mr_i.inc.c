@@ -13,11 +13,11 @@ void bhv_piranha_particle_loop(void) {
 
 void mr_i_piranha_particle_act_move(void) {
 #ifdef MR_I_PITCH_SHOOTING
-    // Take pitch into account
-    o->oVelX = (o->oForwardVel *  coss(o->oMoveAnglePitch) * sins(o->oMoveAngleYaw));
-    o->oVelY = (o->oForwardVel * -sins(o->oMoveAnglePitch)                         );
-    o->oVelZ = (o->oForwardVel *  coss(o->oMoveAnglePitch) * coss(o->oMoveAngleYaw));
-    vec3f_add(&o->oPosVec, &o->oVelVec);
+    f32 forward = o->oForwardVel * coss(o->oMoveAnglePitch);
+    o->oVelX = forward * sins(o->oMoveAngleYaw);
+    o->oVelY = -o->oForwardVel * sins(o->oMoveAnglePitch);
+    o->oVelZ = forward * coss(o->oMoveAngleYaw);
+    obj_offset_local(o, &o->oPosVec, &o->oPosVec, o->oVelX, o->oVelY, o->oVelZ);
 #endif
 
     cur_obj_scale(3.0f);
@@ -55,15 +55,12 @@ void spawn_mr_i_particle(void) {
 
     struct Object *particle = spawn_object(o, MODEL_PURPLE_MARBLE, bhvMrIParticle);
 #ifdef MR_I_PITCH_SHOOTING
-    // Take pitch into account
-    particle->oPosX += (90.0f * yScale) *  coss(o->oMoveAnglePitch) * sins(o->oMoveAngleYaw);
-    particle->oPosY += (90.0f * yScale) * -sins(o->oMoveAnglePitch) + (50.0f * yScale);
-    particle->oPosZ += (90.0f * yScale) *  coss(o->oMoveAnglePitch) * coss(o->oMoveAngleYaw);
+    f32 forward = 90.0f * coss(o->oMoveAnglePitch);
+    f32 up = 50.0f - 90.0f * sins(o->oMoveAnglePitch);
 #else
-    particle->oPosY += 50.0f * yScale;
-    particle->oPosX += sins(o->oMoveAngleYaw) * 90.0f * yScale;
-    particle->oPosZ += coss(o->oMoveAngleYaw) * 90.0f * yScale;
+    f32 forward = 90.0f, up = 50.0f;
 #endif
+    obj_offset_forward(o, &particle->oPosVec, &o->oPosVec, o->oMoveAngleYaw, forward * yScale, up * yScale);
     cur_obj_play_sound_2(SOUND_OBJ_MRI_SHOOT);
 }
 
@@ -73,8 +70,7 @@ void bhv_mr_i_iris_loop(void) {
     if (!(o->activeFlags & ACTIVE_FLAG_IN_DIFFERENT_ROOM)) {
         obj_copy_scale(o, o->parentObj);
         obj_set_parent_relative_pos(o, 0, 0, o->header.gfx.scale[1] * 100.0f);
-        obj_build_transform_from_pos_and_angle(o, O_PARENT_RELATIVE_POS_INDEX, O_MOVE_ANGLE_INDEX);
-        obj_translate_local(o, O_POS_INDEX, O_PARENT_RELATIVE_POS_INDEX);
+        obj_add_local_offset(o, &o->oMoveAngleVec);
         o->oFaceAnglePitch = o->oMoveAnglePitch;
         o->oGraphYOffset = o->parentObj->oGraphYOffset;
     }
@@ -129,7 +125,7 @@ void mr_i_body_act_spin_death(void) {
             spawn_mist_particles();
             o->oMrIScale = scaleModifier * 0.6f;
             if (o->oBehParams2ndByte != MR_I_BP_NORMAL) {
-                o->oPosY += 100.0f;
+                obj_add_up(o, &o->oPosVec, 100.0f);
                 spawn_default_star(1370, 2000.0f, -320.0f);
                 obj_mark_for_deletion(o);
             } else {
@@ -225,7 +221,7 @@ void mr_i_body_act_looking_at_mario(void) {
 void mr_i_body_act_idle(void) {
     s16 angleToMario = obj_angle_to_object(o, gMarioObject);
     s16 angleDiffMoveYawToMario        = abs_angle_diff(o->oMoveAngleYaw, angleToMario);
-    s16 angleDiffMoveYawToMarioFaceYaw = abs_angle_diff(o->oMoveAngleYaw, gMarioObject->oFaceAngleYaw);
+    s16 angleDiffMoveYawToMarioFaceYaw = abs_angle_diff(o->oMoveAngleYaw, obj_yaw_in_frame(o, gMarioObject, gMarioObject->oFaceAngleYaw));
 
     if (o->oTimer == 0) {
         cur_obj_become_tangible();
@@ -280,14 +276,13 @@ ObjActionFunc sMrIBodyActions[] = {
 
 struct ObjectHitbox sMrIHitbox = {
     /* interactType:      */ INTERACT_DAMAGE,
-    /* downOffset:        */ 0,
     /* damageOrCoinValue: */ 2,
     /* health:            */ 2,
     /* numLootCoins:      */ 5,
-    /* radius:            */ 80,
-    /* height:            */ 150,
+    /* radius:            */ 72,
+    /* offset:            */ 72,
     /* hurtboxRadius:     */ 0,
-    /* hurtboxHeight:     */ 0,
+    /* hurtboxOffset:     */ 0,
 };
 
 void bhv_mr_i_body_loop(void) {

@@ -12,14 +12,13 @@
  */
 static struct ObjectHitbox sWigglerBodyPartHitbox = {
     /* interactType:      */ INTERACT_BOUNCE_TOP,
-    /* downOffset:        */ 0,
     /* damageOrCoinValue: */ 3,
     /* health:            */ 99, // never decreases
     /* numLootCoins:      */ 0,
-    /* radius:            */ 20,
-    /* height:            */ 20,
-    /* hurtboxRadius:     */ 20,
-    /* hurtboxHeight:     */ 10,
+    /* radius:            */ 18,
+    /* offset:            */ 6,
+    /* hurtboxRadius:     */ 12,
+    /* hurtboxOffset:     */ 6,
 };
 
 /**
@@ -27,14 +26,13 @@ static struct ObjectHitbox sWigglerBodyPartHitbox = {
  */
 static struct ObjectHitbox sWigglerHitbox = {
     /* interactType:      */ INTERACT_BOUNCE_TOP,
-    /* downOffset:        */ 0,
     /* damageOrCoinValue: */ 3,
     /* health:            */ 4,
     /* numLootCoins:      */ 0,
-    /* radius:            */ 60,
-    /* height:            */ 50,
-    /* hurtboxRadius:     */ 30,
-    /* hurtboxHeight:     */ 40,
+    /* radius:            */ 49,
+    /* offset:            */ 14,
+    /* hurtboxRadius:     */ 20,
+    /* hurtboxOffset:     */ 16,
 };
 
 /**
@@ -62,7 +60,7 @@ static f32 sWigglerSpeeds[] = { 2.0f, 40.0f, 30.0f, 16.0f };
  * attack.
  */
 void bhv_wiggler_body_part_update(void) {
-    Vec3f d;
+    obj_inherit_gravity_frame(o, o->parentObj);
     struct ChainSegment *segment = &o->parentObj->oWigglerSegments[o->oBehParams2ndByte];
 
     cur_obj_scale(o->parentObj->header.gfx.scale[0]);
@@ -70,27 +68,22 @@ void bhv_wiggler_body_part_update(void) {
     o->oFaceAnglePitch = segment->angle[0];
     o->oFaceAngleYaw = segment->angle[1];
 
-    // HACKERSM64_DO: What is this for?
     f32 posOffset = -37.5f * o->header.gfx.scale[0];
-    d[1] = posOffset * coss(o->oFaceAnglePitch) - posOffset;
-    f32 dxz = posOffset * sins(o->oFaceAnglePitch);
-    d[0] = dxz * sins(o->oFaceAngleYaw);
-    d[2] = dxz * coss(o->oFaceAngleYaw);
-
-    vec3f_sum(&o->oPosVec, segment->pos, d);
+    obj_offset_forward(o, &o->oPosVec, segment->pos, o->oFaceAngleYaw,
+                       posOffset * sins(o->oFaceAnglePitch), posOffset * (coss(o->oFaceAnglePitch) - 1.0f));
 
     if (o->oPosY < o->parentObj->oWigglerFallThroughFloorsHeight) {
         //! Since position is recomputed each frame, tilting the wiggler up
         //  while on the ground could cause the tail segments to clip through
         //  the floor
-        o->oPosY -= 30.0f;
+        obj_add_up(o, &o->oPosVec, -30.0f);
         cur_obj_update_floor_height();
-        if (o->oFloorHeight > o->oPosY) { // HACKERSM64_DO: Check ineq swap
-            o->oPosY = o->oFloorHeight;
+        if (o->oFloor != NULL && o->oFloorHeight > obj_height(o, &o->oPosVec)) { // HACKERSM64_DO: Check ineq swap
+            obj_set_height(o, &o->oPosVec, o->oFloorHeight);
         }
     }
 
-    segment->pos[1] = o->oPosY;
+    obj_set_height(o, segment->pos, obj_height(o, &o->oPosVec));
 
     // Inherit walking animation speed from wiggler
     cur_obj_init_animation_with_accel_and_sound(0, o->parentObj->oWigglerWalkAnimSpeed);
@@ -166,7 +159,7 @@ void wiggler_init_segments(void) {
         prevBodyPart = &o->oWigglerSegments[i - 1];
         bodyPart = &o->oWigglerSegments[i];
 
-        vec3_diff(d, bodyPart->pos, prevBodyPart->pos);
+        obj_local_delta(o, d, bodyPart->pos, prevBodyPart->pos);
 
         // As the head turns, propagate this rotation backward if the difference
         // is more than 45 degrees
@@ -183,10 +176,8 @@ void wiggler_init_segments(void) {
         // Set the body part's position relative to the previous body part's
         // position, using the current body part's angles. This means that the
         // head can rotate up to 45 degrees without the body moving
-        bodyPart->pos[1] = segmentLength * sins(bodyPart->angle[0]) + prevBodyPart->pos[1];
-        dxz = segmentLength * coss(bodyPart->angle[0]);
-        bodyPart->pos[0] = prevBodyPart->pos[0] - dxz * sins(bodyPart->angle[1]);
-        bodyPart->pos[2] = prevBodyPart->pos[2] - dxz * coss(bodyPart->angle[1]);
+        obj_offset_forward(o, bodyPart->pos, prevBodyPart->pos, bodyPart->angle[1],
+                           -segmentLength * coss(bodyPart->angle[0]), segmentLength * sins(bodyPart->angle[0]));
     }
 }
 

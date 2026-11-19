@@ -8,14 +8,13 @@
 
 static struct ObjectHitbox sAmpHitbox = {
     /* interactType:      */ INTERACT_SHOCK,
-    /* downOffset:        */ 40,
     /* damageOrCoinValue: */ 1,
     /* health:            */ 0,
     /* numLootCoins:      */ 0,
-    /* radius:            */ 40,
-    /* height:            */ 50,
-    /* hurtboxRadius:     */ 50,
-    /* hurtboxHeight:     */ 60,
+    /* radius:            */ 30,
+    /* offset:            */ -12,
+    /* hurtboxRadius:     */ 27,
+    /* hurtboxOffset:     */ -10,
 };
 
 /**
@@ -23,7 +22,7 @@ static struct ObjectHitbox sAmpHitbox = {
  */
 void bhv_homing_amp_init(void) {
     vec3f_copy(&o->oHomeVec, &o->oPosVec);
-    o->oHomingAmpAvgY = o->oHomeY;
+    o->oHomingAmpAvgY = 0.0f;
 
     // Homing amps start at 1/10th their normal size.
     // They grow when they "appear" to Mario.
@@ -60,9 +59,9 @@ static void homing_amp_appear_loop(void) {
     // In Lakitu and Mario cam, it is usually very close to the current camera position.
     // In Fixed cam, it is the point behind Mario the camera will go to when transitioning
     // to Lakitu cam. Homing amps will point themselves towards this point when appearing.
-    f32 relativeTargetX = gLakituState.goalPos[0] - o->oPosX;
-    f32 relativeTargetZ = gLakituState.goalPos[2] - o->oPosZ;
-    s16 targetYaw = atan2s(relativeTargetZ, relativeTargetX);
+    Vec3f toCamera;
+    vec3_diff(toCamera, gLakituState.goalPos, &o->oPosVec);
+    s16 targetYaw = obj_yaw_from_direction(o, toCamera);
 
     o->oMoveAngleYaw = approach_s16_symmetric(o->oMoveAngleYaw, targetYaw, 0x1000);
 
@@ -105,10 +104,10 @@ static void homing_amp_chase_loop(void) {
         // Mario's head. Mario's graphics' Y + 150 is around the top of his head.
         // Note that the average Y will slowly go down to approach his head if the amp
         // is above his head, but if the amp is below it will instantly snap up.
-        if (o->oHomingAmpAvgY > gMarioObject->header.gfx.pos[1] + 150.0f) {
+        if (o->oHomingAmpAvgY > obj_height_difference(o, gMarioObject->header.gfx.pos, &o->oHomeVec) + 150.0f) {
             o->oHomingAmpAvgY -= 10.0f;
         } else {
-            o->oHomingAmpAvgY = gMarioObject->header.gfx.pos[1] + 150.0f;
+            o->oHomingAmpAvgY = obj_height_difference(o, gMarioObject->header.gfx.pos, &o->oHomeVec) + 150.0f;
         }
 
         if (o->oTimer > 30) {
@@ -124,13 +123,13 @@ static void homing_amp_chase_loop(void) {
         // The amp's average Y will approach Mario's graphical Y position + 250
         // at a rate of 10 units per frame. Interestingly, this is different from
         // the + 150 used while chasing him. Could this be a typo?
-        if (o->oHomingAmpAvgY < gMarioObject->header.gfx.pos[1] + 250.0f) {
+        if (o->oHomingAmpAvgY < obj_height_difference(o, gMarioObject->header.gfx.pos, &o->oHomeVec) + 250.0f) {
             o->oHomingAmpAvgY += 10.0f;
         }
     }
 
     // The amp's position will sinusoidally oscillate 40 units around its average Y.
-    o->oPosY = o->oHomingAmpAvgY + sins(o->oAmpYPhase * 0x400) * 20.0f;
+    obj_set_height(o, &o->oPosVec, obj_height(o, &o->oHomeVec) + o->oHomingAmpAvgY + sins(o->oAmpYPhase * 0x400) * 20.0f);
 
     // Handle attacks
     check_amp_attack();
@@ -155,7 +154,7 @@ static void homing_amp_give_up_loop(void) {
         o->oAction = HOMING_AMP_ACT_INACTIVE;
         o->oAnimState = 0;
         o->oForwardVel = 0.0f;
-        o->oHomingAmpAvgY = o->oHomeY;
+        o->oHomingAmpAvgY = 0.0f;
     }
 }
 
@@ -256,10 +255,11 @@ void bhv_circling_amp_init(void) {
  */
 static void fixed_circling_amp_idle_loop(void) {
     // Turn towards Mario, in both yaw and pitch.
-    f32 xToMario = gMarioObject->header.gfx.pos[0] - o->oPosX;
-    f32 yToMario = gMarioObject->header.gfx.pos[1] - o->oPosY + 120.0f;
-    f32 zToMario = gMarioObject->header.gfx.pos[2] - o->oPosZ;
-    s16 vAngleToMario = atan2s(sqrtf(xToMario * xToMario + zToMario * zToMario), -yToMario);
+    Vec3f head;
+    obj_offset_up(gMarioObject, head, gMarioObject->header.gfx.pos, 120.0f);
+    vec3_sub(head, &o->oPosVec);
+    obj_world_to_local(o, head, head);
+    s16 vAngleToMario = atan2s(sqrtf(sqr(head[0]) + sqr(head[2])), -head[1]);
 
     obj_turn_toward_object(o, gMarioObject, O_FACE_ANGLE_YAW_INDEX, 0x1000);
     o->oFaceAnglePitch = approach_s16_symmetric(o->oFaceAnglePitch, vAngleToMario, 0x1000);
@@ -269,7 +269,7 @@ static void fixed_circling_amp_idle_loop(void) {
     // It is slightly larger than the 0x400 figure used for homing amps, which makes
     // fixed amps oscillate slightly quicker.
     // Also, this uses the cosine, which starts at 1 instead of 0.
-    o->oPosY = o->oHomeY + coss(o->oAmpYPhase * 0x458) * 20.0f;
+    obj_set_height(o, &o->oPosVec, obj_height(o, &o->oHomeVec) + coss(o->oAmpYPhase * 0x458) * 20.0f);
 
     // Handle attacks
     check_amp_attack();
@@ -291,9 +291,8 @@ static void circling_amp_idle_loop(void) {
     // twice that of the fixed amp. In other words, circling amps will
     // oscillate twice as fast. Also, unlike all other amps, circling
     // amps oscillate 60 units around their average Y instead of 40.
-    o->oPosX = o->oHomeX + sins(o->oMoveAngleYaw) * o->oAmpRadiusOfRotation;
-    o->oPosZ = o->oHomeZ + coss(o->oMoveAngleYaw) * o->oAmpRadiusOfRotation;
-    o->oPosY = o->oHomeY + coss(o->oAmpYPhase * 0x8B0) * 30.0f;
+    obj_offset_local(o, &o->oPosVec, &o->oHomeVec, sins(o->oMoveAngleYaw) * o->oAmpRadiusOfRotation,
+                     coss(o->oAmpYPhase * 0x8B0) * 30.0f, coss(o->oMoveAngleYaw) * o->oAmpRadiusOfRotation);
     o->oMoveAngleYaw += 0x400;
     o->oFaceAngleYaw = o->oMoveAngleYaw + 0x4000;
 

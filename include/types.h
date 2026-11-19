@@ -75,6 +75,10 @@ typedef s32 Vec4i[4];
 typedef f32 Vec4f[4];
 typedef f64 Vec4d[4];
 
+typedef struct {
+    f32 x, y, z, w;
+} Quat;
+
 typedef f32 Mat2[2][2];
 typedef f32 Mat3[3][3];
 typedef f32 Mat4[4][4];
@@ -236,6 +240,11 @@ struct AnimInfo {
     /*0x10 0x48*/ s32 animAccel;
 };
 
+enum ObjectTransformFlags {
+    GRAPH_OBJ_GRAVITY_FRAME = (1 << 0),
+    GRAPH_OBJ_PARENT        = (1 << 1),
+};
+
 struct GraphNodeObject {
     /*0x00*/ struct GraphNode node;
     /*0x14*/ struct GraphNode *sharedChild;
@@ -245,8 +254,8 @@ struct GraphNodeObject {
     /*0x20*/ Vec3f pos;
     /*0x2C*/ Vec3f scale;
     /*0x38*/ struct AnimInfo animInfo;
-    /*0x4C*/ struct SpawnInfo *spawnInfo;
-    /*0x50*/ Mat4 *throwMatrix; // matrix ptr
+    /*0x4C*/ u32 transformFlags;
+    /*0x50*/ const Quat *rotation; // Optional orientation supplied by the actor.
     /*0x54*/ Vec3f cameraToObject;
 };
 
@@ -307,28 +316,29 @@ struct Object {
     /*0x1F4*/ s16 bhvDelayTimer;
     /*0x1F6*/ s16 respawnInfoType;
     /*0x1F8*/ f32 hitboxRadius;
-    /*0x1FC*/ f32 hitboxHeight;
+    /*0x1FC*/ f32 hitboxOffset; // Sphere center along the actor's local up axis.
     /*0x200*/ f32 hurtboxRadius;
-    /*0x204*/ f32 hurtboxHeight;
-    /*0x208*/ f32 hitboxDownOffset;
+    /*0x204*/ f32 hurtboxOffset;
+    /*0x208*/ f32 interactionHalfHeight; // Nonzero only for bounded gameplay triggers.
     /*0x20C*/ const BehaviorScript *behavior;
-    /*0x210*/ u32 unused2;
+    /*0x210*/ u32 collisionFrame; // Last frame this actor loaded dynamic collision.
     /*0x214*/ struct Object *platform;
     /*0x218*/ TerrainData *collisionData;
-    /*0x21C*/ Mat4 transform;
-    /*0x25C*/ void *respawnInfo;
+    /*0x21C*/ Vec3f gravityDir; // Unit down vector. oGravity supplies the acceleration.
+    /*0x228*/ Quat gravityFrame; // Local +Y is up, local +Z is yaw zero.
+    /*0x238*/ Quat orientation; // Rotation supplied by a behavior, before parent transforms.
+    /*0x248*/ void *respawnInfo;
 };
 
 struct ObjectHitbox {
     /*0x00*/ u32 interactType;
-    /*0x04*/ u8 downOffset;
-    /*0x05*/ s8 damageOrCoinValue;
-    /*0x06*/ s8 health;
-    /*0x07*/ s8 numLootCoins;
+    /*0x04*/ s8 damageOrCoinValue;
+    /*0x05*/ s8 health;
+    /*0x06*/ s8 numLootCoins;
     /*0x08*/ s16 radius;
-    /*0x0A*/ s16 height;
+    /*0x0A*/ s16 offset;
     /*0x0C*/ s16 hurtboxRadius;
-    /*0x0E*/ s16 hurtboxHeight;
+    /*0x0E*/ s16 hurtboxOffset;
 };
 
 struct Waypoint {
@@ -404,7 +414,7 @@ struct MarioState {
     /*0x38*/ s16 slideYaw;
     /*0x3A*/ s16 twirlYaw;
     /*0x3C*/ Vec3f pos;
-    /*0x48*/ Vec3f vel;
+    /*0x48*/ Vec3f vel; // Gravity-local. pos is world-space.
     /*0x54*/ f32 forwardVel;
     /*0x58*/ f32 slideVelX;
     /*0x5C*/ f32 slideVelZ;
@@ -460,7 +470,7 @@ struct MarioState {
              s16 ceilYaw;
              s16 wallYaw;
      SurfaceType floorType; // SURFACE_NULL over open space.
-   struct Normal floorNormal;
+   struct Normal floorNormal; // Gravity-local, unlike Surface.normal.
     // -- HackerSM64 MarioState fields end --
 };
 

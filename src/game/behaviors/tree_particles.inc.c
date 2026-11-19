@@ -11,7 +11,7 @@ void bhv_tree_snow_or_leaf_loop(void) {
     }
 
     if (
-        o->oPosY < o->oFloorHeight
+        obj_height(o, &o->oPosVec) < o->oFloorHeight
         || o->oFloorHeight < FLOOR_LOWER_LIMIT
         || o->oTimer > 100
         || gPrevFrameObjectCount > OBJECT_POOL_CAPACITY - 28
@@ -32,10 +32,9 @@ void bhv_tree_snow_or_leaf_loop(void) {
         o->oForwardVel = 0.0f;
     }
 
-    o->oPosX += sins(o->oMoveAngleYaw) * sins(o->oTreeSnowOrLeafSidewardAngle) * o->oTreeSnowOrLeafSidewardVel;
-    o->oPosZ += coss(o->oMoveAngleYaw) * sins(o->oTreeSnowOrLeafSidewardAngle) * o->oTreeSnowOrLeafSidewardVel;
+    f32 side = sins(o->oTreeSnowOrLeafSidewardAngle) * o->oTreeSnowOrLeafSidewardVel;
+    obj_offset_forward(o, &o->oPosVec, &o->oPosVec, o->oMoveAngleYaw, side, o->oVelY);
     o->oTreeSnowOrLeafSidewardAngle += o->oTreeSnowOrLeafSidewardAngleVel;
-    o->oPosY += o->oVelY;
 }
 
 void bhv_snow_leaf_particle_spawn_init(void) {

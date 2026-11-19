@@ -36,8 +36,7 @@ static void cloud_act_spawn_parts(void) {
 
         cur_obj_scale(3.0f);
 
-        o->oCloudCenterX = o->oPosX;
-        o->oCloudCenterY = o->oPosY;
+        vec3_copy(&o->oCloudCenterVec, &o->oPosVec);
     }
 
     o->oAction = CLOUD_ACT_MAIN;
@@ -89,9 +88,8 @@ static void cloud_fwoosh_update(void) {
                 o->oTimer = 0;
             }
 
-            o->oCloudCenterX = o->oHomeX + 100.0f * coss(o->oCloudFwooshMovementRadius);
-            o->oPosZ = o->oHomeZ + 100.0f * sins(o->oCloudFwooshMovementRadius);
-            o->oCloudCenterY = o->oHomeY;
+            obj_offset_forward(o, &o->oCloudCenterVec, &o->oHomeVec,
+                               0x4000 - o->oCloudFwooshMovementRadius, 100.0f, 0.0f);
         }
 
         cur_obj_scale(o->header.gfx.scale[0]);
@@ -111,10 +109,8 @@ static void cloud_act_main(void) {
         if (o->parentObj->activeFlags == ACTIVE_FLAG_DEACTIVATED) {
             o->oAction = CLOUD_ACT_UNLOAD;
         } else {
-            o->oCloudCenterX = o->parentObj->oPosX;
-            o->oCloudCenterY = o->parentObj->oPosY;
-            o->oPosZ = o->parentObj->oPosZ;
-
+            obj_inherit_gravity_frame(o, o->parentObj);
+            vec3_copy(&o->oCloudCenterVec, &o->parentObj->oPosVec);
             o->oMoveAngleYaw = o->parentObj->oFaceAngleYaw;
         }
     } else if (o->oBehParams2ndByte != CLOUD_BP_FWOOSH) {
@@ -129,8 +125,8 @@ static void cloud_act_main(void) {
 
     localOffset = 2 * coss(localOffsetPhase) * o->header.gfx.scale[0];
 
-    o->oPosX = o->oCloudCenterX + localOffset;
-    o->oPosY = o->oCloudCenterY + localOffset + 12.0f * o->header.gfx.scale[0];
+    obj_offset_local(o, &o->oPosVec, &o->oCloudCenterVec, localOffset,
+                     localOffset + 12.0f * o->header.gfx.scale[0], 0.0f);
 }
 
 /**
@@ -175,7 +171,7 @@ void bhv_cloud_part_update(void) {
         obj_mark_for_deletion(o);
     } else {
         f32 scale = 2.0f / 3.0f * o->parentObj->header.gfx.scale[0];
-        s16 angleFromCenter = o->parentObj->oFaceAngleYaw + 0x10000 / 5 * o->oBehParams2ndByte;
+        s16 angleFromCenter = obj_yaw_in_frame(o, o->parentObj, o->parentObj->oFaceAngleYaw) + 0x10000 / 5 * o->oBehParams2ndByte;
 
         // Takes 32 frames to cycle
         s16 localOffsetPhase = 0x800 * gGlobalTimer + 0x4000 * o->oBehParams2ndByte;
@@ -195,13 +191,11 @@ void bhv_cloud_part_update(void) {
 
         cloudRadius = 25.0f * scale;
 
-        o->oPosX = o->parentObj->oCloudCenterX + cloudRadius * sins(angleFromCenter) + localOffset;
-
-        o->oPosY =
-            o->parentObj->oCloudCenterY + localOffset + scale * sCloudPartHeights[o->oBehParams2ndByte];
-
-        o->oPosZ = o->parentObj->oPosZ + cloudRadius * coss(angleFromCenter) + localOffset;
-
+        obj_inherit_gravity_frame(o, o->parentObj);
+        obj_offset_local(o, &o->oPosVec, &o->parentObj->oCloudCenterVec,
+                         cloudRadius * sins(angleFromCenter) + localOffset,
+                         scale * sCloudPartHeights[o->oBehParams2ndByte] + localOffset,
+                         cloudRadius * coss(angleFromCenter) + localOffset);
         o->oFaceAngleYaw = o->parentObj->oFaceAngleYaw;
     }
 }

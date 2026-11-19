@@ -2,14 +2,13 @@
 
 struct ObjectHitbox sExclamationBoxHitbox = {
     .interactType      = INTERACT_BREAKABLE,
-    .downOffset        = 5,
     .damageOrCoinValue = 0,
     .health            = 1,
     .numLootCoins      = 0,
-    .radius            = 40,
-    .height            = 30,
-    .hurtboxRadius     = 40,
-    .hurtboxHeight     = 30,
+    .radius            = 29,
+    .offset            = 7,
+    .hurtboxRadius     = 22,
+    .hurtboxOffset     = 10,
 };
 
 struct ExclamationBoxContents {
@@ -77,7 +76,7 @@ void exclamation_box_act_active(void) {
         cur_obj_unhide();
         cur_obj_become_tangible();
         o->oInteractStatus = INT_STATUS_NONE;
-        o->oPosY = o->oHomeY;
+        obj_set_height(o, &o->oPosVec, obj_height(o, &o->oHomeVec));
         o->oGraphYOffset = 0.0f;
     }
     if (cur_obj_was_attacked_or_ground_pounded()) {
@@ -85,7 +84,7 @@ void exclamation_box_act_active(void) {
         o->oExclamationBoxScaleAngle = 0x4000;
         o->oVelY = 30.0f;
         o->oGravity = -8.0f;
-        o->oFloorHeight = o->oPosY;
+        o->oFloorHeight = obj_height(o, &o->oPosVec);
         o->oAction = EXCLAMATION_BOX_ACT_SCALING;
         queue_rumble_data(5, 80);
     }
@@ -121,7 +120,7 @@ void exclamation_box_spawn_contents(struct ExclamationBoxContents *contentsList,
         contentsObj = spawn_object(o, contents->model, contents->behavior);
         contentsObj->oVelY = 20.0f;
         contentsObj->oForwardVel = 3.0f;
-        contentsObj->oMoveAngleYaw = gMarioObject->oMoveAngleYaw;
+        contentsObj->oMoveAngleYaw = obj_yaw_in_frame(contentsObj, gMarioObject, gMarioObject->oMoveAngleYaw);
         OR_BPARAM1(o->oBehParams, contents->behParam);
         if (contents->model == MODEL_STAR) {
             o->oFlags |= OBJ_FLAG_PERSISTENT_RESPAWN;

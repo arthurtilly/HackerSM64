@@ -22,7 +22,7 @@ void cannon_door_act_opening(void) {
 
     if (o->oTimer < 30) {
         o->oVelY = -0.5f;
-        o->oPosY += o->oVelY;
+        obj_add_up(o, &o->oPosVec, o->oVelY);
         o->oVelX = 0.0f;
     } else {
         if (o->oTimer == 80) {
@@ -32,7 +32,7 @@ void cannon_door_act_opening(void) {
 
         o->oVelX = 4.0f;
         o->oVelY = 0.0f;
-        o->oPosX += o->oVelX;
+        obj_offset_local(o, &o->oPosVec, &o->oPosVec, o->oVelX, 0.0f, 0.0f);
     }
 }
 

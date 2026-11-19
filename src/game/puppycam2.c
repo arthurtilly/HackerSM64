@@ -571,7 +571,7 @@ void puppycam_init(void) {
     gPuppyCam.flags                 = gPuppyCam.intendedFlags;
     gPuppyCam.zoom                  = gPuppyCam.zoomPoints[1];
     gPuppyCam.zoomTarget            = gPuppyCam.zoom;
-    gPuppyCam.yaw                   = gMarioState->faceAngle[1] + 0x8000;
+    gPuppyCam.yaw                   = gPlayerCameraState->faceAngle[1] + 0x8000;
     gPuppyCam.yawTarget             = gPuppyCam.yaw;
     gPuppyCam.pitch                 = 0x3800;
     gPuppyCam.pitchTarget           = gPuppyCam.pitch;
@@ -625,7 +625,7 @@ void puppycam_input_centre(void) {
     // Handles L button centering.
     if (inputDefault && gPuppyCam.flags & PUPPYCAM_BEHAVIOUR_YAW_ROTATION &&
     !(gPuppyCam.flags & PUPPYCAM_BEHAVIOUR_INPUT_8DIR) && !(gPuppyCam.flags & PUPPYCAM_BEHAVIOUR_INPUT_4DIR) && !(gPlayer1Controller->buttonDown & U_JPAD)) {
-        gPuppyCam.yawTarget = gMarioState->faceAngle[1] + 0x8000;
+        gPuppyCam.yawTarget = gPlayerCameraState->faceAngle[1] + 0x8000;
         play_sound(SOUND_MENU_CLICK_CHANGE_VIEW,gGlobalSoundSource);
     }
 }
@@ -920,8 +920,8 @@ static void puppycam_view_panning(void) {
             slideSpeed = MIN(gMarioState->forwardVel / 12.0f, 3.0f);
         }
         f32 speedMul = panEx + (400.0f * CLAMP(gMarioState->forwardVel / 320.0f, 0.25f, 1.0f));
-        expectedPanX = LENCOS(LENSIN(speedMul, gMarioState->faceAngle[1] - gPuppyCam.yaw) * panMulti, ABS(gPuppyCam.yaw));
-        expectedPanZ = LENSIN(LENCOS(speedMul, gMarioState->faceAngle[1]) * panMulti, ABS(gPuppyCam.yaw));
+        expectedPanX = LENCOS(LENSIN(speedMul, gPlayerCameraState->faceAngle[1] - gPuppyCam.yaw) * panMulti, ABS(gPuppyCam.yaw));
+        expectedPanZ = LENSIN(LENCOS(speedMul, gPlayerCameraState->faceAngle[1]) * panMulti, ABS(gPuppyCam.yaw));
 
         gPuppyCam.pan[0] = approach_f32_asymptotic(gPuppyCam.pan[0], expectedPanX, 0.01f * slideSpeed);
         gPuppyCam.pan[2] = approach_f32_asymptotic(gPuppyCam.pan[2], expectedPanZ, 0.01f * slideSpeed);
@@ -955,7 +955,7 @@ void puppycam_terrain_angle(void) {
     s16 floorPitch;
     s32 gotTheOkay = FALSE;
 
-    if (gMarioState->floor == NULL || (gMarioState->action & ACT_FLAG_SWIMMING)
+    if (gMarioState->floor == NULL || gMarioObject->gravityDir[1] != -1.0f || (gMarioState->action & ACT_FLAG_SWIMMING)
         || !(gPuppyCam.flags & PUPPYCAM_BEHAVIOUR_HEIGHT_HELPER)) {
         gPuppyCam.intendedTerrainPitch = 0;
         adjustSpeed = 0.25f;
@@ -1087,8 +1087,8 @@ void puppycam_projection_behaviours(void) {
                 // The deal here, is if Mario's moving, or he's sliding and the camera's within 90 degrees behind him, it'll auto focus behind him, with an intensity based on the camera's centre speed.
                 // It also scales with forward velocity, so it's a gradual effect as he speeds up.
                 if ((ABS(gPlayer1Controller->rawStickX) > 20 && !(gMarioState->action & ACT_FLAG_BUTT_OR_STOMACH_SLIDE)) || (gMarioState->action == ACT_SHOT_FROM_CANNON) ||
-                    (gMarioState->action & ACT_FLAG_BUTT_OR_STOMACH_SLIDE && (s16)ABS(((gPuppyCam.yaw + 0x8000) % 0xFFFF - 0x8000) - ((gMarioState->faceAngle[1]) % 0xFFFF - 0x8000)) < 0x3000 ))
-                gPuppyCam.yawTarget = approach_angle(gPuppyCam.yawTarget, (gMarioState->faceAngle[1] + 0x8000), ((0x200) * ABS(gMarioState->forwardVel / 32) * turnMag * turnRate));
+                    (gMarioState->action & ACT_FLAG_BUTT_OR_STOMACH_SLIDE && (s16)ABS(((gPuppyCam.yaw + 0x8000) % 0xFFFF - 0x8000) - ((gPlayerCameraState->faceAngle[1]) % 0xFFFF - 0x8000)) < 0x3000 ))
+                gPuppyCam.yawTarget = approach_angle(gPuppyCam.yawTarget, (gPlayerCameraState->faceAngle[1] + 0x8000), ((0x200) * ABS(gMarioState->forwardVel / 32) * turnMag * turnRate));
             }
         } else { //If none of the above is true, it'll attempt to do this instead.
             // If the camera's in these modes, snap the yaw to prevent desync.
@@ -1158,7 +1158,7 @@ void puppycam_projection_behaviours(void) {
             gPuppyCam.targetFloorHeight = gPuppyCam.targetObj->oPosY;
             gPuppyCam.lastTargetFloorHeight = gPuppyCam.targetObj->oPosY;
 
-            gPuppyCam.yawTarget = approach_angle(gPuppyCam.yawTarget, (gMarioState->faceAngle[1] + 0x8000), (1000 * (gMarioState->forwardVel / 32)));
+            gPuppyCam.yawTarget = approach_angle(gPuppyCam.yawTarget, (gPlayerCameraState->faceAngle[1] + 0x8000), (1000 * (gMarioState->forwardVel / 32)));
             if ((gMarioState->waterLevel - 100 - gMarioState->pos[1] > 5 && gPuppyCam.flags & PUPPYCAM_BEHAVIOUR_PITCH_ROTATION) || gMarioState->action == ACT_FLYING || gMarioState->action == ACT_SHOT_FROM_CANNON) {
                 gPuppyCam.swimPitch = approach_f32_asymptotic(gPuppyCam.swimPitch,gMarioState->faceAngle[0] / 10, 0.05f);
             } else {
@@ -1447,6 +1447,15 @@ static void puppycam_apply(void) {
         gPuppyCam.targetObj2 = NULL;
     }*/
 
+    if (gMarioObject->gravityDir[1] != -1.0f) {
+        Vec3f pos;
+        vec3_copy(pos, gMarioState->pos);
+        sMarioGeometry.currFloorHeight = find_floor(pos[0], pos[1], pos[2], &sMarioGeometry.currFloor);
+        sMarioGeometry.currCeilHeight = find_ceil(pos[0], pos[1] + 3.0f, pos[2], &sMarioGeometry.currCeil);
+        sMarioGeometry.currFloorType = sMarioGeometry.currFloor ? sMarioGeometry.currFloor->type : SURFACE_NULL;
+        sMarioGeometry.currCeilType = sMarioGeometry.currCeil ? sMarioGeometry.currCeil->type : SURFACE_NULL;
+        return;
+    }
     sMarioGeometry.currFloor       = gMarioState->floor;
     sMarioGeometry.currFloorHeight = gMarioState->floorHeight;
     sMarioGeometry.currFloorType   = gMarioState->floorType;

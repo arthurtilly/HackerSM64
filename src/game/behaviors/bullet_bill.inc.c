@@ -71,7 +71,7 @@ void bullet_bill_act_4(void) {
 
     o->oFaceAnglePitch += 0x1000;
     o->oFaceAngleRoll += 0x1000;
-    o->oPosY += 20.0f;
+    obj_add_up(o, &o->oPosVec, 20.0f);
 
     if (o->oTimer > 90) {
         o->oAction = 0;

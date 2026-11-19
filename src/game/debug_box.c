@@ -102,6 +102,29 @@ Gfx dl_debug_cylinder_verts[] = {
 	gsSPEndDisplayList(),
 };
 
+#define SPHERE_VERTEX(x, y, z) {{{ x, y, z }, 0, { 0, 0 }, { 0, 0, 0, 255 }}}
+#define SPHERE_RING(y, r, d) \
+    SPHERE_VERTEX(0, y, r), SPHERE_VERTEX(d, y, d), SPHERE_VERTEX(r, y, 0), SPHERE_VERTEX(d, y, -d), \
+    SPHERE_VERTEX(0, y, -r), SPHERE_VERTEX(-d, y, -d), SPHERE_VERTEX(-r, y, 0), SPHERE_VERTEX(-d, y, d)
+static const Vtx sSphereVertices[] = {
+    SPHERE_RING(-71, 71, 50), SPHERE_RING(0, 100, 71), SPHERE_RING(71, 71, 50),
+    SPHERE_VERTEX(0, -100, 0), SPHERE_VERTEX(0, 100, 0),
+};
+#undef SPHERE_RING
+#undef SPHERE_VERTEX
+
+#define SPHERE_SEGMENT(a, b) \
+    gsSP2Triangles(24, b, a, 0, a, b, b+8, 0), \
+    gsSP2Triangles(a, b+8, a+8, 0, a+8, b+8, b+16, 0), \
+    gsSP2Triangles(a+8, b+16, a+16, 0, a+16, b+16, 25, 0)
+static const Gfx dl_debug_sphere[] = {
+    gsSPVertex(sSphereVertices, ARRAY_COUNT(sSphereVertices), 0),
+    SPHERE_SEGMENT(0, 1), SPHERE_SEGMENT(1, 2), SPHERE_SEGMENT(2, 3), SPHERE_SEGMENT(3, 4),
+    SPHERE_SEGMENT(4, 5), SPHERE_SEGMENT(5, 6), SPHERE_SEGMENT(6, 7), SPHERE_SEGMENT(7, 0),
+    gsSPEndDisplayList(),
+};
+#undef SPHERE_SEGMENT
+
 u8 hitboxView  = FALSE;
 u8 surfaceView = FALSE;
 
@@ -112,6 +135,7 @@ struct DebugBox {
     u32 color;
     Vec3s center;
     Vec3s bounds;
+    s16 pitch;
     s16 yaw;
     u8 type;
 };
@@ -320,13 +344,14 @@ void visual_surface_loop(Gfx **gfx) {
  *
  * If there are already MAX_DEBUG_BOXES boxes, does nothing.
  */
-static void append_debug_box(Vec3f center, Vec3f bounds, s16 yaw, s32 type) {
+static void append_debug_box(Vec3f center, Vec3f bounds, s16 pitch, s16 yaw, s32 type) {
     if (hitboxView) {
         if (sNumBoxes >= MAX_DEBUG_BOXES) return;
 
         vec3f_to_vec3s(sBoxes[sNumBoxes].center, center);
         vec3f_to_vec3s(sBoxes[sNumBoxes].bounds, bounds);
 
+        sBoxes[sNumBoxes].pitch = pitch;
         sBoxes[sNumBoxes].yaw   = yaw;
         sBoxes[sNumBoxes].color = sCurBoxColor;
         sBoxes[sNumBoxes].type  = type;
@@ -352,14 +377,19 @@ void debug_box_color(u32 color) {
  * @see debug_box_rot()
  */
 void debug_box(Vec3f center, Vec3f bounds, s32 type) {
-    append_debug_box(center, bounds, 0, type);
+    append_debug_box(center, bounds, 0, 0, type);
 }
 
 /**
  * Draws a debug box from (center - bounds) to (center + bounds), rotating it by `yaw`
  */
 void debug_box_rot(Vec3f center, Vec3f bounds, s16 yaw, s32 type) {
-    append_debug_box(center, bounds, yaw, type);
+    append_debug_box(center, bounds, 0, yaw, type);
+}
+
+void debug_cylinder(Vec3f base, Vec3f bounds, const Vec3f up) {
+    s16 pitch = atan2s(up[1], sqrtf(sqr(up[0]) + sqr(up[2])));
+    append_debug_box(base, bounds, pitch, atan2s(up[2], up[0]), DEBUG_SHAPE_CYLINDER);
 }
 
 /**
@@ -384,7 +414,7 @@ void debug_box_pos_rot(Vec3f pMin, Vec3f pMax, s16 yaw, s32 type) {
 
     vec3f_sum(center, pMin, bounds);
 
-    append_debug_box(center, bounds, yaw, type);
+    append_debug_box(center, bounds, 0, yaw, type);
 }
 
 static void render_box(Gfx **gfx, int index) {
@@ -397,19 +427,12 @@ static void render_box(Gfx **gfx, int index) {
 
     if (mtx == NULL) return;
 
-    // Calculate rotation matrix
-    guRotateF(mtxFloat, ((box->yaw / (f32)0x10000) * 360.0f), 0, 1.0f, 0);
-
-    // Apply scale to column vectors of matrix
-    for (int i = 0; i < 3; i++) {
-        for (int j = 0; j < 3; j++) {
-            mtxFloat[i][j] *= box->bounds[j] * 0.01f;
-        }
-    }
-
-    // Copy translation into matrix
-    for (int i = 0; i < 3; i++) {
-        mtxFloat[3][i] = box->center[i];
+    Vec3s rotation = { box->pitch, box->yaw, 0 };
+    Vec3f pos;
+    vec3s_to_vec3f(pos, box->center);
+    mtxf_rotate_zxy_and_translate(mtxFloat, pos, rotation);
+    for (s32 i = 0; i < 3; i++) {
+        vec3_scale(mtxFloat[i], box->bounds[i] * 0.01f);
     }
 
     // Convert the matrix from floating-point to fixed-point
@@ -426,6 +449,9 @@ static void render_box(Gfx **gfx, int index) {
     }
     if (box->type & DEBUG_SHAPE_CYLINDER) {
         gSPDisplayList((*gfx)++, dl_debug_cylinder_verts);
+    }
+    if (box->type & DEBUG_SHAPE_SPHERE) {
+        gSPDisplayList((*gfx)++, dl_debug_sphere);
     }
 }
 

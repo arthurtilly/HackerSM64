@@ -72,8 +72,10 @@ void piranha_plant_act_sleeping(void) {
 
     cur_obj_init_animation_with_sound(PIRANHA_PLANT_ANIM_SLEEPING);
 
-    cur_obj_set_hitbox_radius_and_height(250.0f, 200.0f);
-    cur_obj_set_hurtbox_radius_and_height(150.0f, 100.0f);
+    o->hitboxRadius = 220.0f;
+    o->hitboxOffset = 85.0f;
+    o->hurtboxRadius = 122.0f;
+    o->hurtboxOffset = 45.0f;
 
     /**
      * Make Piranha Plants harmless, but tangible, while they sleep.
@@ -233,8 +235,10 @@ void piranha_plant_act_biting(void) {
 
     cur_obj_init_animation_with_sound(PIRANHA_PLANT_ANIM_BITE);
 
-    cur_obj_set_hitbox_radius_and_height(150.0f, 100.0f);
-    cur_obj_set_hurtbox_radius_and_height(150.0f, 100.0f);
+    o->hitboxRadius = 125.0f;
+    o->hitboxOffset = 40.0f;
+    o->hurtboxRadius = 120.0f;
+    o->hurtboxOffset = 40.0f;
 
     // Play a bite sound effect on certain frames.
     if (is_item_in_array(animFrame, sPiranhaPlantBiteSoundFrames)) {

@@ -43,7 +43,7 @@ static void fish_spawner_act_spawn(void) {
  * Mario is more than 2000 units higher.
  */
 static void fish_spawner_act_idle(void) {
-    if ((gCurrLevelNum != LEVEL_SA) && (gMarioObject->oPosY - o->oPosY > 2000.0f)) {
+    if ((gCurrLevelNum != LEVEL_SA) && (obj_height_difference(o, &gMarioObject->oPosVec, &o->oPosVec) > 2000.0f)) {
         o->oAction = FISH_SPAWNER_ACT_RESPAWN;
     }
 }
@@ -69,19 +69,20 @@ void bhv_fish_spawner_loop(void) {
  * Allows the fish to swim vertically.
  */
 static void fish_vertical_roam(s32 speed) {
-    f32 parentY = o->parentObj->oPosY;
+    f32 parentY = obj_height(o, &o->parentObj->oPosVec);
+    f32 height = obj_height(o, &o->oPosVec);
     // If the stage is fully submerged, the fish can
     // travel as far vertically as they wish.
     if (o->oBehParams2ndByte & FISH_BP_FLAG_IN_FULL_WATER_LEVEL) {
-        if (500.0f < absf(o->oPosY - o->oFishGoalY)) {
+        if (500.0f < absf(height - o->oFishGoalY)) {
             speed = 10;
         }
-        o->oPosY = approach_f32_symmetric(o->oPosY, o->oFishGoalY, speed);
+        obj_set_height(o, &o->oPosVec, approach_f32_symmetric(height, o->oFishGoalY, speed));
 
     // Allow the fish to roam vertically if within range of the fish spawner.
-    } else if (((parentY - 100.0f - o->oFishDepthDistance) < o->oPosY)
-            && (o->oPosY < (parentY + 1000.0f + o->oFishDepthDistance))) {
-        o->oPosY = approach_f32_symmetric(o->oPosY, o->oFishGoalY, speed);
+    } else if (((parentY - 100.0f - o->oFishDepthDistance) < height)
+            && (height < (parentY + 1000.0f + o->oFishDepthDistance))) {
+        obj_set_height(o, &o->oPosVec, approach_f32_symmetric(height, o->oFishGoalY, speed));
     }
 }
 
@@ -89,7 +90,7 @@ static void fish_vertical_roam(s32 speed) {
  * Fish action that randomly roams within a set range.
  */
 static void fish_act_roam(void) {
-    f32 fishY = o->oPosY - gMarioObject->oPosY;
+    f32 fishY = obj_height_difference(o, &o->oPosVec, &gMarioObject->oPosVec);
 
     // Alters speed of animation for natural movement.
     if (o->oTimer < 10) {
@@ -106,7 +107,7 @@ static void fish_act_roam(void) {
         o->oFishRoamDistance = random_float() * 500 + 200.0f;
     }
 
-    o->oFishGoalY = gMarioObject->oPosY + o->oFishHeightOffset;
+    o->oFishGoalY = obj_height(o, &gMarioObject->oPosVec) + o->oFishHeightOffset;
 
     // Rotate the fish towards Mario.
     cur_obj_rotate_yaw_toward(o->oAngleToMario, 0x400);
@@ -136,9 +137,9 @@ static void fish_act_roam(void) {
  * Interactively maneuver fish in relation to its distance from other fish and Mario.
  */
 static void fish_act_flee(void) {
-    f32 fishY = o->oPosY - gMarioObject->oPosY;
+    f32 fishY = obj_height_difference(o, &o->oPosVec, &gMarioObject->oPosVec);
 
-    o->oFishGoalY = gMarioObject->oPosY + o->oFishHeightOffset;
+    o->oFishGoalY = obj_height(o, &gMarioObject->oPosVec) + o->oFishHeightOffset;
 
     // Initialize some variables when the flee action first starts.
     if (o->oTimer == 0) {
@@ -160,7 +161,7 @@ static void fish_act_flee(void) {
     if (o->oForwardVel < o->oFishGoalVel) {
         o->oForwardVel += 0.5f;
     }
-    o->oFishGoalY = gMarioObject->oPosY + o->oFishHeightOffset;
+    o->oFishGoalY = obj_height(o, &gMarioObject->oPosVec) + o->oFishHeightOffset;
 
     // Rotate fish away from Mario.
     cur_obj_rotate_yaw_toward(o->oAngleToMario + 0x8000, o->oFishYawVel);

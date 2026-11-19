@@ -17,6 +17,7 @@
 #include "mario_actions_cutscene.h"
 #include "save_file.h"
 #include "object_helpers.h"
+#include "object_collision.h"
 #include "print.h"
 #include "spawn_sound.h"
 #include "behavior_actions.h"
@@ -643,7 +644,7 @@ void calc_y_to_curr_floor(f32 *posOff, f32 posMul, f32 posBound, f32 *focOff, f3
 
     if (sMarioCamState->action & ACT_FLAG_ON_POLE) {
         if (sMarioGeometry.currFloorHeight >= gMarioStates[0].usedObj->oPosY && sMarioCamState->pos[1]
-                   < 0.7f * gMarioStates[0].usedObj->hitboxHeight + gMarioStates[0].usedObj->oPosY) {
+                   < 0.7f * obj_trigger_top(gMarioStates[0].usedObj) + gMarioStates[0].usedObj->oPosY) {
             posBound = 1200;
         }
     }
@@ -1142,7 +1143,7 @@ void mode_8_directions_camera(struct Camera *c) {
 #ifndef ENABLE_DEBUG_FREE_MOVE
         if (gPlayer1Controller->buttonPressed & U_JPAD) {
             s8DirModeYawOffset = 0;
-            s8DirModeYawOffset = gMarioState->faceAngle[1] - 0x8000;
+            s8DirModeYawOffset = sMarioCamState->faceAngle[1] - 0x8000;
         } else if (gPlayer1Controller->buttonPressed & D_JPAD) {
 #else
         if ((gPlayer1Controller->buttonPressed & D_JPAD) && (gMarioState->action != ACT_DEBUG_FREE_MOVE)) {
@@ -3088,8 +3089,8 @@ void update_camera(struct Camera *c) {
         gPuppyCam.yawTarget = gCamera->yaw;
         gPuppyCam.yaw = gCamera->yaw;
         if (gMarioState->action == ACT_ENTERING_STAR_DOOR) { // god this is stupid and the fact I have to continue doing this is testament to the idiocy of the star door cutscene >:(
-            gPuppyCam.yawTarget = gMarioState->faceAngle[1] + 0x8000;
-            gPuppyCam.yaw = gMarioState->faceAngle[1] + 0x8000;
+            gPuppyCam.yawTarget = sMarioCamState->faceAngle[1] + 0x8000;
+            gPuppyCam.yaw = gPuppyCam.yawTarget;
         }
     }
     if (c->cutscene == CUTSCENE_NONE
@@ -7834,8 +7835,8 @@ void cutscene_star_spawn_focus_star(struct Camera *c) {
     Vec3f starPos;
 
     if (gCutsceneFocus != NULL) {
-        object_pos_to_vec3f(starPos, gCutsceneFocus);
-        starPos[1] += gCutsceneFocus->hitboxHeight;
+        obj_sphere_center(gCutsceneFocus, &gCutsceneFocus->oPosVec, gCutsceneFocus->hitboxOffset, starPos);
+        starPos[1] += gCutsceneFocus->hitboxRadius;
         approach_vec3f_asymptotic(c->focus, starPos, 0.1f, 0.1f, 0.1f);
     }
 }
@@ -8511,8 +8512,8 @@ void cutscene_dialog_start(struct Camera *c) {
     sCutsceneVars[8].point[1] += 125.f;
 
     // Store gCutsceneFocus's position and yaw
-    object_pos_to_vec3f(sCutsceneVars[9].point, gCutsceneFocus);
-    sCutsceneVars[9].point[1] += gCutsceneFocus->hitboxHeight + 200.f;
+    obj_sphere_center(gCutsceneFocus, &gCutsceneFocus->oPosVec, gCutsceneFocus->hitboxOffset, sCutsceneVars[9].point);
+    sCutsceneVars[9].point[1] += gCutsceneFocus->hitboxRadius + 200.f;
     sCutsceneVars[9].angle[1] = calculate_yaw(sCutsceneVars[8].point, sCutsceneVars[9].point);
 
     yaw = calculate_yaw(sMarioCamState->pos, gLakituState.curPos);

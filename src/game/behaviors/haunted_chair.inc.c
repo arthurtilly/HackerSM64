@@ -2,14 +2,13 @@
 
 struct ObjectHitbox sHauntedChairHitbox = {
     /* interactType:      */ INTERACT_MR_BLIZZARD,
-    /* downOffset:        */ 0,
     /* damageOrCoinValue: */ 2,
     /* health:            */ 0,
     /* numLootCoins:      */ 0,
-    /* radius:            */ 50,
-    /* height:            */ 50,
-    /* hurtboxRadius:     */ 50,
-    /* hurtboxHeight:     */ 50,
+    /* radius:            */ 36,
+    /* offset:            */ 22,
+    /* hurtboxRadius:     */ 28,
+    /* hurtboxOffset:     */ 22,
 };
 
 void bhv_haunted_chair_init(void) {
@@ -75,7 +74,7 @@ void haunted_chair_act_0(void) {
         }
     }
 
-    cur_obj_push_mario_away_from_cylinder(80.0f, 120.0f);
+    cur_obj_push_mario_away_from_sphere(24.0f, 55.0f);
 }
 
 void haunted_chair_act_1(void) {

@@ -28,7 +28,7 @@ void bhv_explosion_loop(void) {
 }
 
 void bhv_bobomb_bully_death_smoke_init(void) {
-    o->oPosY -= 300.0f;
+    obj_add_up(o, &o->oPosVec, -300.0f);
     cur_obj_scale(10.0f);
 }
 
@@ -52,13 +52,13 @@ void bhv_bobomb_explosion_bubble_loop(void) {
 
     if (o->oPosY > waterY) {
         o->activeFlags = ACTIVE_FLAG_DEACTIVATED;
-        o->oPosY += 5.0f;
+        obj_add_up(o, &o->oPosVec, 5.0f);
         spawn_object(o, MODEL_SMALL_WATER_SPLASH, bhvObjectWaterSplash);
     }
 
     if (o->oTimer > 60) {
         o->activeFlags = ACTIVE_FLAG_DEACTIVATED;
     }
-    o->oPosY += o->oVelY;
+    obj_add_up(o, &o->oPosVec, o->oVelY);
     o->oTimer++;
 }

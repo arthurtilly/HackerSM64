@@ -2,14 +2,13 @@
 
 static struct ObjectHitbox sBowlingBallHitbox = {
     /* interactType:      */ INTERACT_DAMAGE,
-    /* downOffset:        */ 0,
     /* damageOrCoinValue: */ 2,
     /* health:            */ 0,
     /* numLootCoins:      */ 0,
-    /* radius:            */ 100,
-    /* height:            */ 150,
+    /* radius:            */ 84,
+    /* offset:            */ 130,
     /* hurtboxRadius:     */ 0,
-    /* hurtboxHeight:     */ 0,
+    /* hurtboxOffset:     */ 0,
 };
 
 static Trajectory sThiHugeMetalBallTraj[] = {
@@ -211,7 +210,7 @@ void bhv_thi_bowling_ball_spawner_loop(void) {
 void bhv_bob_pit_bowling_ball_loop(void) {
     cur_obj_move_rolling();
 
-    if ((o->oFloor != NULL) && (o->oFloor->normal.x == 0) && (o->oFloor->normal.z == 0)) {
+    if ((o->oFloor != NULL) && obj_normal_up(o, o->oFloor->normal) > 0.99999f) {
         o->oForwardVel = 28.0f;
     }
     bowling_ball_set_hitbox();

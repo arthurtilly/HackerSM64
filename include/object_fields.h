@@ -64,6 +64,7 @@
 #define /*0x0A8*/ oPosZ                       OBJECT_FIELD_F32(O_POS_INDEX + 2)
 /* Velocity vector */
 #define /*0x0AC*/ O_VEL_INDEX                 0x09
+// Velocity components and movement angles are relative to gravityFrame.
 #define /*0x0AC*/ oVelVec                     OBJECT_FIELD_F32(O_VEL_INDEX)
 #define /*0x0AC*/ oVelX                       OBJECT_FIELD_F32(O_VEL_INDEX + 0)
 #define /*0x0B0*/ oVelY                       OBJECT_FIELD_F32(O_VEL_INDEX + 1)
@@ -430,10 +431,9 @@
 #define /*0x0F4*/ oClamShakeTimer OBJECT_FIELD_S32(0x1B)
 
 /* Cloud */
-#define /*0x0F4*/ oCloudCenterX              OBJECT_FIELD_F32(0x1B)
-#define /*0x0F8*/ oCloudCenterY              OBJECT_FIELD_F32(0x1C)
-#define /*0x0FC*/ oCloudBlowing              OBJECT_FIELD_S32(0x1D)
-#define /*0x100*/ oCloudGrowSpeed            OBJECT_FIELD_F32(0x1E)
+#define /*0x0F4*/ oCloudCenterVec            OBJECT_FIELD_F32(0x1B) // three world coordinates
+#define /*0x100*/ oCloudBlowing              OBJECT_FIELD_S32(0x1E)
+#define /*0x104*/ oCloudGrowSpeed            OBJECT_FIELD_F32(0x1F)
 #define /*0x1AC*/ oCloudFwooshMovementRadius OBJECT_FIELD_S16(0x49, 0)
 
 /* Coin */
@@ -1080,7 +1080,6 @@
 #define /*0x0FC*/ oTTCCogTargetVel OBJECT_FIELD_F32(0x1D)
 
 /* TTC Pit Block */
-#define /*0x0F4*/ oTTCPitBlockPeakY    OBJECT_FIELD_F32(0x1B)
 #define /*0x0F8*/ oTTCPitBlockDir      OBJECT_FIELD_S32(0x1C)
 #define /*0x0FC*/ oTTCPitBlockWaitTime OBJECT_FIELD_S32(0x1D)
 

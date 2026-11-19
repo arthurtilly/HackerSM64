@@ -8,14 +8,13 @@ struct TripletButterflyActivationData {
 
 static struct ObjectHitbox sTripletButterflyExplodeHitbox = {
     /* interactType:      */ INTERACT_MR_BLIZZARD,
-    /* downOffset:        */ 50,
     /* damageOrCoinValue: */ 2,
     /* health:            */ 1,
     /* numLootCoins:      */ 0,
-    /* radius:            */ 100,
-    /* height:            */ 50,
-    /* hurtboxRadius:     */ 100,
-    /* hurtboxHeight:     */ 50,
+    /* radius:            */ 74,
+    /* offset:            */ -25,
+    /* hurtboxRadius:     */ 66,
+    /* hurtboxOffset:     */ -25,
 };
 
 static struct TripletButterflyActivationData sTripletButterflyActivationData[] = {
@@ -71,11 +70,11 @@ static void triplet_butterfly_act_wander(void) {
             }
         }
 
-        if (o->oHomeY < o->oFloorHeight) {
-            o->oHomeY = o->oFloorHeight;
+        if (obj_height(o, &o->oHomeVec) < o->oFloorHeight) {
+            obj_set_height(o, &o->oHomeVec, o->oFloorHeight);
         }
 
-        if (o->oPosY < o->oHomeY + random_linear_offset(50, 50)) {
+        if (obj_height(o, &o->oPosVec) < obj_height(o, &o->oHomeVec) + random_linear_offset(50, 50)) {
             o->oTripletButterflyTargetPitch = -0x2000;
         } else {
             o->oTripletButterflyTargetPitch = 0x2000;
@@ -111,7 +110,7 @@ static void triplet_butterfly_act_activate(void) {
             sTripletButterflyActivationData[o->oTripletButterflyType].scale / 30.0f;
         if (o->oTripletButterflyType == TRIPLET_BUTTERFLY_TYPE_EXPLODES) {
             o->oGraphYOffset = 250.0f * o->oTripletButterflyScale;
-            o->oPosY = o->oHomeY - o->oGraphYOffset;
+            obj_set_height(o, &o->oPosVec, obj_height(o, &o->oHomeVec) - o->oGraphYOffset);
         }
     }
 }
@@ -120,7 +119,7 @@ static void triplet_butterfly_act_explode(void) {
     obj_check_attacks(&sTripletButterflyExplodeHitbox, -1);
 
     if (o->oAction == -1 || (o->oMoveFlags & OBJ_MOVE_HIT_WALL) || o->oTimer >= 158) {
-        o->oPosY += o->oGraphYOffset;
+        obj_add_up(o, &o->oPosVec, o->oGraphYOffset);
         spawn_object(o, MODEL_EXPLOSION, bhvExplosion);
         obj_mark_for_deletion(o);
     } else {

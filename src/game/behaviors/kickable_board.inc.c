@@ -2,7 +2,7 @@
 
 s32 check_mario_attacking(void) {
     if (obj_check_if_collided_with_object(o, gMarioObject)) {
-        if (abs_angle_diff(o->oMoveAngleYaw, gMarioObject->oMoveAngleYaw) > 0x6000) {
+        if (abs_angle_diff(o->oMoveAngleYaw, obj_yaw_in_frame(o, gMarioObject, gMarioObject->oMoveAngleYaw)) > 0x6000) {
             if (gMarioStates[0].action == ACT_SLIDE_KICK      ) return WF_ATTACK_GROUND;
             if (gMarioStates[0].action == ACT_PUNCHING        ) return WF_ATTACK_GROUND;
             if (gMarioStates[0].action == ACT_MOVE_PUNCHING   ) return WF_ATTACK_GROUND;
@@ -22,6 +22,7 @@ void init_kickable_board_rock(void) {
 
 void bhv_kickable_board_loop(void) {
     s32 attackValue;
+    s16 rockingPitch = 0;
 
     switch (o->oAction) {
         case KICKABLE_BOARD_ACT_IDLE_VERTICAL:
@@ -32,18 +33,15 @@ void bhv_kickable_board_loop(void) {
                 o->oAction++;
             }
 
-            load_object_collision_model();
             break;
 
         case KICKABLE_BOARD_ACT_ROCKING:
-            o->oFaceAnglePitch = 0;
-            load_object_collision_model();
-            o->oFaceAnglePitch = -sins(o->oKickableBoardRockingAngleAmount) * o->oKickableBoardRockingTimer;
+            rockingPitch = -sins(o->oKickableBoardRockingAngleAmount) * o->oKickableBoardRockingTimer;
 
             if (o->oTimer > 30) {
                 attackValue = check_mario_attacking();
                 if (attackValue) {
-                    if (gMarioObject->oPosY > o->oPosY + 160.0f && attackValue == WF_ATTACK_AIR) {
+                    if (obj_height_difference(o, &gMarioObject->oPosVec, &o->oPosVec) > 160.0f && attackValue == WF_ATTACK_AIR) {
                         o->oAction++;
                         cur_obj_play_sound_2(SOUND_GENERAL_BUTTON_PRESS_2);
                     } else {
@@ -84,13 +82,10 @@ void bhv_kickable_board_loop(void) {
                 cur_obj_play_sound_2(SOUND_GENERAL_KICKABLE_BOARD_FALL);
             }
 
-            load_object_collision_model();
-            break;
-
-        case KICKABLE_BOARD_ACT_IDLE_HORIZONTAL:
-            load_object_collision_model();
             break;
     }
 
-    o->header.gfx.throwMatrix = NULL;
+    load_object_collision_model();
+    obj_update_gfx_pos_and_angle(o);
+    o->header.gfx.angle[0] += rockingPitch;
 }

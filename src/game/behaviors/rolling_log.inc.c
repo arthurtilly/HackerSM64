@@ -21,8 +21,9 @@ void bhv_ttm_rolling_log_init(void) {
 
 void rolling_log_roll_log(void) {
     if (gMarioObject->platform == o) {
-        f32 rollAmount = (gMarioObject->header.gfx.pos[2] - o->oPosZ) * coss(-o->oMoveAngleYaw)
-                       - (gMarioObject->header.gfx.pos[0] - o->oPosX) * sins(-o->oMoveAngleYaw);
+        Vec3f rider;
+        obj_local_delta(o, rider, gMarioObject->header.gfx.pos, &o->oPosVec);
+        f32 rollAmount = rider[2] * coss(o->oMoveAngleYaw) + rider[0] * sins(o->oMoveAngleYaw);
         if (rollAmount > 0) {
             o->oAngleVelPitch += 0x10;
         } else {
@@ -60,8 +61,8 @@ void rolling_log_roll_log(void) {
 }
 
 void bhv_rolling_log_loop(void) {
-    f32 prevX = o->oPosX;
-    f32 prevZ = o->oPosZ;
+    Vec3f prev, offset;
+    vec3_copy(prev, &o->oPosVec);
 
     rolling_log_roll_log();
 
@@ -69,13 +70,12 @@ void bhv_rolling_log_loop(void) {
     o->oVelX = o->oForwardVel * sins(o->oMoveAngleYaw);
     o->oVelZ = o->oForwardVel * coss(o->oMoveAngleYaw);
 
-    o->oPosX += o->oVelX;
-    o->oPosZ += o->oVelZ;
+    obj_offset_local(o, &o->oPosVec, &o->oPosVec, o->oVelX, 0.0f, o->oVelZ);
 
-    if (o->oRollingLogMaxDist < sqr(o->oPosX - o->oRollingLogX) + sqr(o->oPosZ - o->oRollingLogZ)) {
+    obj_local_delta(o, offset, &o->oPosVec, &o->oHomeVec);
+    if (sqr(offset[0] + o->oHomeX - o->oRollingLogX) + sqr(offset[2] + o->oHomeZ - o->oRollingLogZ) > o->oRollingLogMaxDist) {
         o->oForwardVel = 0.0f;
-        o->oPosX = prevX;
-        o->oPosZ = prevZ;
+        vec3_copy(&o->oPosVec, prev);
         o->oVelX = 0.0f;
         o->oVelZ = 0.0f;
     }
@@ -129,7 +129,7 @@ void bhv_volcano_trap_loop(void) {
 
         case 2:
             if (o->oTimer < 8) {
-                o->oPosY = o->oHomeY + sins(o->oTimer * 0x1000) * 10.0f;
+                obj_set_height(o, &o->oPosVec, obj_height(o, &o->oHomeVec) + sins(o->oTimer * 0x1000) * 10.0f);
             }
             if (o->oTimer == 50) {
                 cur_obj_play_sound_2(SOUND_GENERAL_VOLCANO_TRAP_RISE);

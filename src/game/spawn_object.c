@@ -5,6 +5,7 @@
 #include "engine/graph_node.h"
 #include "engine/math_util.h"
 #include "engine/surface_collision.h"
+#include "game_init.h"
 #include "level_table.h"
 #include "object_constants.h"
 #include "object_fields.h"
@@ -95,7 +96,6 @@ void unload_object(struct Object *obj) {
     obj->prevObj = NULL;
     obj->oFloor = NULL;
 
-    obj->header.gfx.throwMatrix = NULL;
     stop_sounds_from_source(obj->header.gfx.cameraToObject);
     geo_remove_child(&obj->header.gfx.node);
     geo_add_child(&gObjParentGraphNode, &obj->header.gfx.node);
@@ -163,11 +163,11 @@ struct Object *allocate_object(struct ObjectNode *objList) {
     obj->bhvDelayTimer = 0;
 
     obj->hitboxRadius = 50.0f;
-    obj->hitboxHeight = 100.0f;
+    obj->hitboxOffset = 50.0f;
     obj->hurtboxRadius = 0.0f;
-    obj->hurtboxHeight = 0.0f;
-    obj->hitboxDownOffset = 0.0f;
-    obj->unused2 = 0;
+    obj->hurtboxOffset = 0.0f;
+    obj->interactionHalfHeight = 0.0f;
+    obj->collisionFrame = gGlobalTimer - 1;
 
     obj->platform = NULL;
     obj->collisionData = NULL;
@@ -178,7 +178,9 @@ struct Object *allocate_object(struct ObjectNode *objList) {
     obj->oCollisionDistance = 1000.0f;
     obj->oDrawingDistance = 4000.0f;
 
-    mtxf_identity(obj->transform);
+    vec3_copy(obj->gravityDir, gVec3fNY);
+    obj->gravityFrame = gQuatIdentity;
+    obj->orientation = gQuatIdentity;
 
     obj->respawnInfoType = RESPAWN_INFO_TYPE_NULL;
     obj->respawnInfo = NULL;
@@ -188,7 +190,8 @@ struct Object *allocate_object(struct ObjectNode *objList) {
 
     obj->header.gfx.node.flags &= ~GRAPH_RENDER_INVISIBLE;
     vec3_same(obj->header.gfx.pos, -10000.0f);
-    obj->header.gfx.throwMatrix = NULL;
+    obj->header.gfx.transformFlags = 0;
+    obj->header.gfx.rotation = NULL;
 
     return obj;
 }

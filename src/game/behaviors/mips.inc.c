@@ -252,8 +252,7 @@ void bhv_mips_thrown(void) {
     o->oFlags &= ~OBJ_FLAG_SET_FACE_YAW_TO_MOVE_YAW;
     cur_obj_init_animation(2);
     cur_obj_become_tangible();
-    o->oForwardVel = 25.0f;
-    o->oVelY = 20.0f;
+    cur_obj_set_throw_velocity(25.0f, 20.0f);
     o->oAction = MIPS_ACT_FALL_DOWN;
 }
 

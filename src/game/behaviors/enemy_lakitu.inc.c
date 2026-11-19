@@ -10,14 +10,13 @@
  */
 static struct ObjectHitbox sEnemyLakituHitbox = {
     /* interactType:      */ INTERACT_HIT_FROM_BELOW,
-    /* downOffset:        */ 0,
     /* damageOrCoinValue: */ 2,
     /* health:            */ 0,
     /* numLootCoins:      */ 5,
-    /* radius:            */ 50,
-    /* height:            */ 50,
-    /* hurtboxRadius:     */ 40,
-    /* hurtboxHeight:     */ 50,
+    /* radius:            */ 35,
+    /* offset:            */ 13,
+    /* hurtboxRadius:     */ 23,
+    /* hurtboxOffset:     */ 18,
 };
 
 /**
@@ -45,7 +44,7 @@ static void enemy_lakitu_update_vel_y(f32 offsetY) {
         margin = 3.0f;
     }
 
-    if (o->oPosY < gMarioObject->oPosY + offsetY + margin) {
+    if (obj_height_difference(o, &o->oPosVec, &gMarioObject->oPosVec) < offsetY + margin) {
         obj_y_vel_approach(4.0f, 0.4f);
     } else {
         obj_y_vel_approach(-4.0f, 0.4f);

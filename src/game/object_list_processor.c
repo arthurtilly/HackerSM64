@@ -479,7 +479,9 @@ void spawn_objects_from_info(UNUSED s32 unused, struct SpawnInfo *spawnInfo) {
 
             vec3s_to_vec3i(&object->oMoveAngleVec, spawnInfo->startAngle);
 
-            object->oFloorHeight = find_floor(object->oPosX, object->oPosY, object->oPosZ, &object->oFloor);
+            struct SurfaceContact floor;
+            object->oFloorHeight = find_actor_floor(object, &object->oPosVec, 0.0f, &floor);
+            object->oFloor = floor.surface;
         }
 
         spawnInfo = spawnInfo->next;

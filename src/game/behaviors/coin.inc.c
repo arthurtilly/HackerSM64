@@ -2,14 +2,13 @@
 
 struct ObjectHitbox sYellowCoinHitbox = {
     /* interactType:      */ INTERACT_COIN,
-    /* downOffset:        */ 0,
     /* damageOrCoinValue: */ 1,
     /* health:            */ 0,
     /* numLootCoins:      */ 0,
-    /* radius:            */ 100,
-    /* height:            */ 64,
+    /* radius:            */ 76,
+    /* offset:            */ 14,
     /* hurtboxRadius:     */ 0,
-    /* hurtboxHeight:     */ 0,
+    /* hurtboxOffset:     */ 0,
 };
 
 /**
@@ -50,7 +49,7 @@ void bhv_yellow_coin_init(void) {
     obj_set_hitbox(o, &sYellowCoinHitbox);
     cur_obj_update_floor_height();
 
-    if (500.0f < absf(o->oPosY - o->oFloorHeight)) {
+    if (500.0f < absf(obj_height(o, &o->oPosVec) - o->oFloorHeight)) {
         if (cur_obj_has_model(MODEL_YELLOW_COIN)) {
             cur_obj_set_model(MODEL_YELLOW_COIN_NO_SHADOW);
         } else if (cur_obj_has_model(MODEL_BLUE_COIN)) {
@@ -64,7 +63,7 @@ void bhv_yellow_coin_init(void) {
         }
     }
 
-    if (o->oFloorHeight < FLOOR_LOWER_LIMIT_MISC) {
+    if (o->oFloor == NULL) {
         obj_mark_for_deletion(o);
     }
 }
@@ -114,8 +113,9 @@ void bhv_coin_loop(void) {
 
             case BOUNCING_COIN_ACT_BOUNCING:
                 o->oBounciness = 0;
-                if (floor->normal.y < 0.9f) {
-                    s16 targetYaw = SURFACE_YAW(floor);
+                if (obj_normal_up(o, floor->normal) < 0.9f) {
+                    struct Normal n = obj_local_normal(o, floor->normal);
+                    s16 targetYaw = atan2s(n.z, n.x);
                     cur_obj_rotate_yaw_toward(targetYaw, 0x400);
                 }
                 break;
@@ -161,18 +161,18 @@ void bhv_coin_formation_spawned_coin_loop(void) {
         cur_obj_set_behavior(bhvYellowCoin);
         obj_set_hitbox(o, &sYellowCoinHitbox);
         if (o->oCoinSnapToGround) {
-            o->oPosY += 300.0f;
+            obj_add_up(o, &o->oPosVec, 300.0f);
             cur_obj_update_floor_height();
 
-            if (o->oPosY + FIND_FLOOR_BUFFER < o->oFloorHeight || o->oFloorHeight < FLOOR_LOWER_LIMIT_MISC) {
+            if (obj_height(o, &o->oPosVec) + FIND_FLOOR_BUFFER < o->oFloorHeight || o->oFloor == NULL) {
                 obj_mark_for_deletion(o);
             } else {
-                o->oPosY = o->oFloorHeight;
+                obj_set_height(o, &o->oPosVec, o->oFloorHeight);
             }
         } else {
             cur_obj_update_floor_height();
 
-            if (absf(o->oPosY - o->oFloorHeight) > 250.0f) {
+            if (absf(obj_height(o, &o->oPosVec) - o->oFloorHeight) > 250.0f) {
                 cur_obj_set_model(MODEL_YELLOW_COIN_NO_SHADOW);
             }
         }
@@ -299,7 +299,7 @@ void coin_inside_boo_act_carried(void) {
 
     if (parent->oBooDeathStatus == BOO_DEATH_STATUS_DYING) {
         o->oAction = COIN_INSIDE_BOO_ACT_DROPPED;
-        s16 marioMoveYaw = gMarioObject->oMoveAngleYaw;
+        s16 marioMoveYaw = obj_yaw_in_frame(o, gMarioObject, gMarioObject->oMoveAngleYaw);
         o->oVelX = sins(marioMoveYaw) * 3.0f;
         o->oVelZ = coss(marioMoveYaw) * 3.0f;
         o->oVelY = 35.0f;

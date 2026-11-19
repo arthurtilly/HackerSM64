@@ -31,7 +31,7 @@ void bhv_pyramid_top_spinning(void) {
 
     // At first, move upward smoothly without rotating.
     if (o->oTimer < 60) {
-        o->oPosY = o->oHomeY + absf(sins(o->oTimer * 0x2000) * 10.0f);
+        obj_set_height(o, &o->oPosVec, obj_height(o, &o->oHomeVec) + absf(sins(o->oTimer * 0x2000) * 10.0f));
     } else {
         // Then, rotate at an accelerating rate, and move upward at a constant rate.
         o->oAngleVelYaw += 0x100;
@@ -41,7 +41,7 @@ void bhv_pyramid_top_spinning(void) {
         }
 
         o->oFaceAngleYaw += o->oAngleVelYaw;
-        o->oPosY += o->oVelY;
+        obj_add_up(o, &o->oPosVec, o->oVelY);
     }
 
     // Every frame until 90 frames have passed, generate a pyramid fragment

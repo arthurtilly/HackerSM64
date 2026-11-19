@@ -1,6 +1,7 @@
 #include <PR/ultratypes.h>
 
 #include "area.h"
+#include "camera.h"
 #include "engine/math_util.h"
 #include "game_init.h"
 #include "gfx_dimensions.h"
@@ -8,6 +9,10 @@
 #include "memory.h"
 #include "print.h"
 #include "rendering_graph_node.h"
+#include "object_helpers.h"
+#include "object_collision.h"
+#include "interaction.h"
+#include "mario_misc.h"
 #include "shadow.h"
 #include "sm64.h"
 #include "game_init.h"
@@ -158,6 +163,7 @@ ALIGNED16 struct GraphNodeMasterList *gCurGraphNodeMasterList = NULL;
 ALIGNED16 struct GraphNodePerspective *gCurGraphNodeCamFrustum = NULL;
 ALIGNED16 struct GraphNodeCamera *gCurGraphNodeCamera = NULL;
 ALIGNED16 struct GraphNodeObject *gCurGraphNodeObject = NULL;
+static s16 sObjectMatrixIndex;
 ALIGNED16 struct GraphNodeHeldObject *gCurGraphNodeHeldObject = NULL;
 u16 gAreaUpdateCounter = 0;
 LookAt* gCurLookAt;
@@ -864,52 +870,39 @@ void geo_set_animation_globals(struct AnimInfo *node, s32 hasAnimation) {
 void geo_process_shadow(struct GraphNodeShadow *node) {
 #ifndef DISABLE_SHADOWS
     if (gCurGraphNodeCamera != NULL && gCurGraphNodeObject != NULL) {
-        Vec3f shadowPos;
-        f32 shadowScale;
+        s32 mirrored = gCurGraphNodeObject == &gMirrorMario;
+        struct Object *obj = gCurGraphNodeHeldObject != NULL ? gCurGraphNodeHeldObject->objNode
+                           : mirrored ? gMarioState->marioObj : gCurGraphNodeObjectNode;
+        Mat4 *transform = &gMatStack[gMatStackIndex];
+        Vec3f pos;
+        vec3_copy(pos, (*transform)[3]);
 
-        if (gCurGraphNodeHeldObject != NULL) {
-            vec3f_copy(shadowPos, gMatStack[gMatStackIndex][3]);
-            shadowScale = node->shadowScale * gCurGraphNodeHeldObject->objNode->header.gfx.scale[0];
-        } else {
-            vec3f_copy(shadowPos, gCurGraphNodeObject->pos);
-            shadowScale = node->shadowScale * gCurGraphNodeObject->scale[0];
-        }
-
-        s8 shifted = (gCurrAnimEnabled
-                      && (gCurrAnimType == ANIM_TYPE_TRANSLATION
-                       || gCurrAnimType == ANIM_TYPE_LATERAL_TRANSLATION)
-        );
-
-        if (shifted) {
-            struct GraphNode *geo = node->node.children;
-            f32 objScale = 1.0f;
-            if (geo != NULL && geo->type == GRAPH_NODE_TYPE_SCALE) {
-                objScale = ((struct GraphNodeScale *) geo)->scale;
+        if (gCurrAnimEnabled && (gCurrAnimType == ANIM_TYPE_TRANSLATION || gCurrAnimType == ANIM_TYPE_LATERAL_TRANSLATION)) {
+            u16 *attr = gCurrAnimAttribute;
+            f32 x = gCurrAnimData[retrieve_animation_index(gCurrAnimFrame, &attr)];
+            attr += 2; // Skip the root's vertical translation.
+            f32 z = gCurrAnimData[retrieve_animation_index(gCurrAnimFrame, &attr)];
+            if (x != 0.0f || z != 0.0f) {
+                struct GraphNode *child = node->node.children;
+                f32 scale = gCurrAnimTranslationMultiplier;
+                if (child != NULL && child->type == GRAPH_NODE_TYPE_SCALE) scale *= ((struct GraphNodeScale *) child)->scale;
+                for (s32 i = 0; i < 3; i++) pos[i] += scale * (x * (*transform)[0][i] + z * (*transform)[2][i]);
             }
-
-            f32 animScale = gCurrAnimTranslationMultiplier * objScale;
-            Vec3f animOffset;
-            animOffset[0] = gCurrAnimData[retrieve_animation_index(gCurrAnimFrame, &gCurrAnimAttribute)] * animScale;
-            animOffset[1] = 0.0f;
-            gCurrAnimAttribute += 2;
-            animOffset[2] = gCurrAnimData[retrieve_animation_index(gCurrAnimFrame, &gCurrAnimAttribute)] * animScale;
-            gCurrAnimAttribute -= 6;
-
-            // simple matrix rotation so the shadow offset rotates along with the object
-            f32 sinAng = sins(gCurGraphNodeObject->angle[1]);
-            f32 cosAng = coss(gCurGraphNodeObject->angle[1]);
-
-            shadowPos[0] += animOffset[0] * cosAng + animOffset[2] * sinAng;
-            shadowPos[2] += -animOffset[0] * sinAng + animOffset[2] * cosAng;
         }
 
-        Gfx *shadowList = create_shadow_below_xyz(shadowPos, shadowScale * 0.5f,
-                                                  node->shadowSolidity, node->shadowType, shifted);
-
+        // The mirror has no collision geometry of its own. Reflect the real shadow with the model.
+        if (mirrored) pos[0] = 2.0f * CASTLE_MIRROR_X - pos[0];
+        f32 scale = 0.5f * node->shadowScale * obj->header.gfx.scale[0];
+        Gfx *shadowList = create_shadow(obj, pos, scale, node->shadowSolidity, node->shadowType);
         if (shadowList != NULL) {
-            mtxf_shadow(gMatStack[gMatStackIndex + 1],
-                gCurrShadow.floorNormal, shadowPos, gCurrShadow.scale, gCurGraphNodeObject->angle[1]);
-
+            Vec3f forward;
+            Mat4 *shadow = &gMatStack[gMatStackIndex + 1];
+            obj_yaw_direction(obj, forward, obj->header.gfx.angle[1]);
+            mtxf_shadow(*shadow, gCurrShadow.floorNormal, obj->gravityDir, forward, pos, gCurrShadow.scale);
+            if (mirrored) {
+                for (s32 i = 0; i < 3; i++) (*shadow)[i][0] = -(*shadow)[i][0];
+                (*shadow)[3][0] = 2.0f * CASTLE_MIRROR_X - pos[0];
+            }
             inc_mat_stack();
             geo_append_display_list(
                 (void *) VIRTUAL_TO_PHYSICAL(shadowList),
@@ -1011,31 +1004,32 @@ s32 obj_is_in_view(struct GraphNodeObject *node) {
 }
 
 #ifdef VISUAL_DEBUG
-void visualise_object_hitbox(struct Object *node) {
-    Vec3f bnds1, bnds2;
-    // This will create a cylinder that visualises their hitbox.
-    // If they do not have a hitbox, it will be a small white cube instead.
-    if (node->oIntangibleTimer != -1) {
-        vec3f_set(bnds1, node->oPosX, (node->oPosY - node->hitboxDownOffset), node->oPosZ);
-        vec3f_set(bnds2, node->hitboxRadius, node->hitboxHeight-node->hitboxDownOffset, node->hitboxRadius);
-        if (node->behavior == segmented_to_virtual(bhvWarp)
-            || node->behavior == segmented_to_virtual(bhvDoorWarp)
-            || node->behavior == segmented_to_virtual(bhvFadingWarp)) {
-            debug_box_color(COLOR_RGBA32_DEBUG_WARP);
-        } else {
-            debug_box_color(COLOR_RGBA32_DEBUG_HITBOX);
-        }
-
-        debug_box(bnds1, bnds2, (DEBUG_SHAPE_CYLINDER));
-        vec3f_set(bnds1, node->oPosX, (node->oPosY - node->hitboxDownOffset), node->oPosZ);
-        vec3f_set(bnds2, node->hurtboxRadius, node->hurtboxHeight, node->hurtboxRadius);
-        debug_box_color(COLOR_RGBA32_DEBUG_HURTBOX);
-        debug_box(bnds1, bnds2, (DEBUG_SHAPE_CYLINDER));
-    } else {
-        vec3f_set(bnds1, node->oPosX, (node->oPosY - 15), node->oPosZ);
-        vec3f_set(bnds2, 30, 30, 30);
+static void visualise_object_hitbox(struct Object *obj) {
+    Vec3f center, bounds;
+    if (obj->oIntangibleTimer == -1) {
+        vec3_set(bounds, 30, 30, 30);
         debug_box_color(COLOR_RGBA32_DEBUG_POSITION);
-        debug_box(bnds1, bnds2, (DEBUG_SHAPE_BOX));
+        debug_box(&obj->oPosVec, bounds, DEBUG_SHAPE_BOX);
+        return;
+    }
+    debug_box_color(obj->oInteractType & (INTERACT_WARP | INTERACT_WARP_DOOR)
+                    ? COLOR_RGBA32_DEBUG_WARP : COLOR_RGBA32_DEBUG_HITBOX);
+    vec3_set(bounds, obj->hitboxRadius, obj->hitboxRadius, obj->hitboxRadius);
+    if (obj->interactionHalfHeight > 0.0f) {
+        Vec3f up;
+        obj_hitbox_up(obj, up);
+        obj_sphere_center(obj, &obj->oPosVec, obj_trigger_bottom(obj), center);
+        bounds[1] = 2.0f * obj->interactionHalfHeight;
+        debug_cylinder(center, bounds, up);
+    } else {
+        obj_sphere_center(obj, &obj->oPosVec, obj->hitboxOffset, center);
+        debug_box(center, bounds, DEBUG_SHAPE_SPHERE);
+    }
+    if (obj->hurtboxRadius > 0.0f) {
+        debug_box_color(COLOR_RGBA32_DEBUG_HURTBOX);
+        obj_sphere_center(obj, &obj->oPosVec, obj->hurtboxOffset, center);
+        vec3_set(bounds, obj->hurtboxRadius, obj->hurtboxRadius, obj->hurtboxRadius);
+        debug_box(center, bounds, DEBUG_SHAPE_SPHERE);
     }
 }
 #endif
@@ -1043,61 +1037,52 @@ void visualise_object_hitbox(struct Object *node) {
 /**
  * Process an object node.
  */
-void geo_process_object(struct Object *node) {
-    if (node->header.gfx.areaIndex == gCurGraphNodeRoot->areaIndex) {
-        s32 isInvisible = (node->header.gfx.node.flags & GRAPH_RENDER_INVISIBLE);
-        s32 noThrowMatrix = (node->header.gfx.throwMatrix == NULL);
-        // Maintain throw matrix pointer if the game is paused as it won't be updated.
-        Mat4 *oldThrowMatrix = (sCurrPlayMode == PLAY_MODE_PAUSED) ? node->header.gfx.throwMatrix : NULL;
-
-        // If the throw matrix is null and the object is invisible, there is no need
-        // to update billboarding, scale, rotation, etc. 
-        // This still updates translation since it is needed for sound.
-        if (isInvisible && noThrowMatrix) {
-            mtxf_translate(gMatStack[gMatStackIndex + 1], node->header.gfx.pos);
-        }
-        else{
-            if (!noThrowMatrix) {
-                mtxf_scale_vec3f(gMatStack[gMatStackIndex + 1], *node->header.gfx.throwMatrix, node->header.gfx.scale);
-            } else if (node->header.gfx.node.flags & GRAPH_RENDER_BILLBOARD) {
-                mtxf_billboard(gMatStack[gMatStackIndex + 1], gMatStack[gMatStackIndex],
-                            node->header.gfx.pos, node->header.gfx.scale, gCurGraphNodeCamera->roll);
-            } else {
-                mtxf_rotate_zxy_and_translate(gMatStack[gMatStackIndex + 1], node->header.gfx.pos, node->header.gfx.angle);
-                mtxf_scale_vec3f(gMatStack[gMatStackIndex + 1], gMatStack[gMatStackIndex + 1], node->header.gfx.scale);
-            }
+void geo_process_object(struct GraphNodeObject *node) {
+    if (node->areaIndex == gCurGraphNodeRoot->areaIndex) {
+        s32 isInvisible = node->node.flags & GRAPH_RENDER_INVISIBLE;
+        Mat4 *transform = &gMatStack[gMatStackIndex + 1];
+        if (isInvisible) {
+            // Sound still uses the camera-relative position of an invisible object.
+            mtxf_translate(*transform, node->pos);
+        } else if ((node->node.flags & GRAPH_RENDER_BILLBOARD) && node->rotation == NULL
+                && !(node->transformFlags & GRAPH_OBJ_PARENT)) {
+            mtxf_billboard(*transform, gMatStack[gMatStackIndex], node->pos, node->scale, gCurGraphNodeCamera->roll);
+        } else {
+            obj_build_gfx_transform(node, *transform);
         }
 
-        node->header.gfx.throwMatrix = &gMatStack[++gMatStackIndex];
-        linear_mtxf_mul_vec3f_and_translate(gCameraTransform, node->header.gfx.cameraToObject, (*node->header.gfx.throwMatrix)[3]);
+        gMatStackIndex++;
+        linear_mtxf_mul_vec3f_and_translate(gCameraTransform, node->cameraToObject, (*transform)[3]);
 
-        // FIXME: correct types
-        if (node->header.gfx.animInfo.curAnim != NULL) {
-            geo_set_animation_globals(&node->header.gfx.animInfo, (node->header.gfx.node.flags & GRAPH_RENDER_HAS_ANIMATION) != 0);
+        if (node->animInfo.curAnim != NULL) {
+            geo_set_animation_globals(&node->animInfo, (node->node.flags & GRAPH_RENDER_HAS_ANIMATION) != 0);
         }
 
-        if (!isInvisible && obj_is_in_view(&node->header.gfx)) {
+        if (!isInvisible && obj_is_in_view(node)) {
             gMatStackIndex--;
             inc_mat_stack();
 
-            if (node->header.gfx.sharedChild != NULL) {
+            if (node->sharedChild != NULL) {
+                struct GraphNodeObject *previousObject = gCurGraphNodeObject;
+                s16 previousMatrixIndex = sObjectMatrixIndex;
 #ifdef VISUAL_DEBUG
-                if (hitboxView) visualise_object_hitbox(node);
+                if (hitboxView && node != &gMirrorMario) visualise_object_hitbox((struct Object *) node);
 #endif
-                gCurGraphNodeObject = (struct GraphNodeObject *) node;
-                node->header.gfx.sharedChild->parent = &node->header.gfx.node;
-                geo_process_node_and_siblings(node->header.gfx.sharedChild);
-                node->header.gfx.sharedChild->parent = NULL;
-                gCurGraphNodeObject = NULL;
+                gCurGraphNodeObject = node;
+                sObjectMatrixIndex = gMatStackIndex;
+                node->sharedChild->parent = &node->node;
+                geo_process_node_and_siblings(node->sharedChild);
+                node->sharedChild->parent = NULL;
+                sObjectMatrixIndex = previousMatrixIndex;
+                gCurGraphNodeObject = previousObject;
             }
-            if (node->header.gfx.node.children != NULL) {
-                geo_process_node_and_siblings(node->header.gfx.node.children);
+            if (node->node.children != NULL) {
+                geo_process_node_and_siblings(node->node.children);
             }
         }
 
         gMatStackIndex--;
         gCurrAnimType = ANIM_TYPE_NONE;
-        node->header.gfx.throwMatrix = oldThrowMatrix;
     }
 }
 
@@ -1121,9 +1106,7 @@ void geo_process_object_parent(struct GraphNodeObjectParent *node) {
  * Process a held object node.
  */
 void geo_process_held_object(struct GraphNodeHeldObject *node) {
-    Mat4 mat;
     Vec3f translation;
-    Mat4 tempMtx;
 
 #ifdef F3DEX_GBI_2
     gSPLookAt(gDisplayListHead++, gCurLookAt);
@@ -1135,12 +1118,11 @@ void geo_process_held_object(struct GraphNodeHeldObject *node) {
     if (node->objNode != NULL && node->objNode->header.gfx.sharedChild != NULL) {
         vec3_scale_dest(translation, node->translation, 0.25f);
 
-        mtxf_translate(mat, translation);
-        mtxf_copy(gMatStack[gMatStackIndex + 1], *gCurGraphNodeObject->throwMatrix);
-        vec3f_copy(gMatStack[gMatStackIndex + 1][3], gMatStack[gMatStackIndex][3]);
-        mtxf_copy(tempMtx, gMatStack[gMatStackIndex + 1]);
-        mtxf_mul(gMatStack[gMatStackIndex + 1], mat, tempMtx);
-        mtxf_scale_vec3f(gMatStack[gMatStackIndex + 1], gMatStack[gMatStackIndex + 1], node->objNode->header.gfx.scale);
+        // Use the holder's orientation and the animated hand's position.
+        Mat4 *held = &gMatStack[gMatStackIndex + 1];
+        mtxf_scale_vec3f(*held, gMatStack[sObjectMatrixIndex], node->objNode->header.gfx.scale);
+        linear_mtxf_mul_vec3(gMatStack[sObjectMatrixIndex], (*held)[3], translation);
+        vec3_add((*held)[3], gMatStack[gMatStackIndex][3]);
 
         if (node->fnNode.func != NULL) {
             node->fnNode.func(GEO_CONTEXT_HELD_OBJ, &node->fnNode.node, (struct AllocOnlyPool *) gMatStack[gMatStackIndex + 1]);
@@ -1234,10 +1216,6 @@ void geo_process_node_and_siblings(struct GraphNode *firstNode) {
                 geo_try_process_children(curGraphNode);
             } else {
                 GeoProcessJumpTable[curGraphNode->type](curGraphNode);
-            }
-        } else {
-            if (curGraphNode->type == GRAPH_NODE_TYPE_OBJECT) {
-                ((struct GraphNodeObject *) curGraphNode)->throwMatrix = NULL;
             }
         }
     } while (iterateChildren && (curGraphNode = curGraphNode->next) != firstNode);

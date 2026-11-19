@@ -90,7 +90,7 @@ void bhv_lll_bowser_puzzle_spawn_piece(ModelID16 model, const BehaviorScript *be
                                        ObjAction8 initialAction, ObjAction8 *actionList) {
     struct Object *puzzlePiece = spawn_object(o, model, behavior);
     puzzlePiece->oPosX += xOffset;
-    puzzlePiece->oPosY += 50.0f;
+    obj_add_up(puzzlePiece, &puzzlePiece->oPosVec, 50.0f);
     puzzlePiece->oPosZ += zOffset;
     puzzlePiece->oAction = initialAction; // This action never gets executed.
     puzzlePiece->oBowserPuzzlePieceActionList = actionList;

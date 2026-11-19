@@ -4,14 +4,13 @@
 
 static struct ObjectHitbox sBooGivingStarHitbox = {
     /* interactType:      */ 0,
-    /* downOffset:        */ 0,
     /* damageOrCoinValue: */ 3,
     /* health:            */ 3,
     /* numLootCoins:      */ 0,
-    /* radius:            */ 140,
-    /* height:            */ 80,
-    /* hurtboxRadius:     */ 40,
-    /* hurtboxHeight:     */ 60,
+    /* radius:            */ 108,
+    /* offset:            */ 25,
+    /* hurtboxRadius:     */ 22,
+    /* hurtboxOffset:     */ 28,
 };
 
 // Relative positions
@@ -137,7 +136,7 @@ static void boo_oscillate(s32 ignoreOpacity) {
 
 static s32 boo_vanish_or_appear(void) {
     s16 relativeAngleToMario = abs_angle_diff(o->oAngleToMario, o->oMoveAngleYaw);
-    s16 relativeMarioFaceAngle = abs_angle_diff(o->oMoveAngleYaw, gMarioObject->oFaceAngleYaw);
+    s16 relativeMarioFaceAngle = abs_angle_diff(o->oMoveAngleYaw, obj_yaw_in_frame(o, gMarioObject, gMarioObject->oFaceAngleYaw));
     // magic?
     s16 relativeAngleToMarioThreshhold = 0x1568;
     s16 relativeMarioFaceAngleThreshhold = 0x6B58;
@@ -169,7 +168,7 @@ static void boo_set_move_yaw_for_during_hit(s32 hurt) {
     o->oBooMoveYawBeforeHit = (f32) o->oMoveAngleYaw;
 
     if (hurt) {
-        o->oBooMoveYawDuringHit = gMarioObject->oMoveAngleYaw;
+        o->oBooMoveYawDuringHit = obj_yaw_in_frame(o, gMarioObject, gMarioObject->oMoveAngleYaw);
     } else if (coss((s16) o->oMoveAngleYaw - (s16) o->oAngleToMario) < 0.0f) {
         o->oBooMoveYawDuringHit = o->oMoveAngleYaw;
     } else {
@@ -268,7 +267,7 @@ static s32 big_boo_update_during_nonlethal_hit(f32 a0) {
 static s32 boo_update_during_death(void) {
     if (o->oTimer == 0) {
         o->oForwardVel = 40.0f;
-        o->oMoveAngleYaw = gMarioObject->oMoveAngleYaw;
+        o->oMoveAngleYaw = obj_yaw_in_frame(o, gMarioObject, gMarioObject->oMoveAngleYaw);
         o->oBooDeathStatus = BOO_DEATH_STATUS_DYING;
         o->oFlags &= ~OBJ_FLAG_SET_FACE_YAW_TO_MOVE_YAW;
     } else {
@@ -346,9 +345,9 @@ static void boo_chase_mario(f32 minDY, s16 yawIncrement, f32 mul) {
         o->oVelY = 0.0f;
 
         if (!mario_is_in_air_action()) {
-            f32 dy = o->oPosY - gMarioObject->oPosY;
+            f32 dy = obj_height_difference(o, &o->oPosVec, &gMarioObject->oPosVec);
             if ((minDY < dy) && (dy < 500.0f)) {
-                o->oVelY = increment_velocity_toward_range(o->oPosY, gMarioObject->oPosY + 50.0f, 10.0f, 2.0f);
+                o->oVelY = increment_velocity_toward_range(dy, 50.0f, 10.0f, 2.0f);
             }
         }
 
@@ -854,7 +853,7 @@ s32 jiggle_bbh_stair(s32 index) {
         return TRUE;
     }
 
-    o->oPosY += sBbhStairJiggleOffsets[index];
+    obj_add_up(o, &o->oPosVec, sBbhStairJiggleOffsets[index]);
     return FALSE;
 }
 
@@ -875,15 +874,16 @@ void bhv_boo_staircase(void) {
 
     switch (o->oAction) {
         case 0:
-            o->oPosY = o->oHomeY - 620.0f;
+            obj_set_height(o, &o->oPosVec, obj_height(o, &o->oHomeVec) - 620.0f);
             o->oAction++;
             // fallthrough
         case 1:
-            o->oPosY += 8.0f;
+            obj_add_up(o, &o->oPosVec, 8.0f);
             cur_obj_play_sound_1(SOUND_ENV_ELEVATOR2);
 
-            if (o->oPosY > targetY) {
-                o->oPosY = targetY;
+            f32 top = targetY - o->oHomeY;
+            if (obj_height_difference(o, &o->oPosVec, &o->oHomeVec) > top) {
+                obj_offset_up(o, &o->oPosVec, &o->oHomeVec, top);
                 o->oAction++;
             }
 

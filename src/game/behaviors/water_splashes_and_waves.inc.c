@@ -72,7 +72,7 @@ void bhv_water_droplet_loop(void) {
     }
     // Apply gravity
     o->oVelY -= 4.0f;
-    o->oPosY += o->oVelY;
+    obj_add_up(o, &o->oPosVec, o->oVelY);
     // Check if fallen back into the water
     if (o->oVelY < 0.0f) {
         if (waterLevel > o->oPosY) {

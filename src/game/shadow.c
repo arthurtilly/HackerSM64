@@ -4,12 +4,10 @@
 #include "engine/math_util.h"
 #include "engine/surface_collision.h"
 #include "behavior_data.h"
-#include "geo_misc.h"
 #include "level_table.h"
 #include "memory.h"
 #include "level_update.h"
 #include "object_list_processor.h"
-#include "rendering_graph_node.h"
 #include "segment2.h"
 #include "shadow.h"
 #include "sm64.h"
@@ -22,13 +20,13 @@
 /**
  * An array consisting of all the hardcoded rectangle shadows in the game.
  */
-static ShadowRectangle sShadowRectangles[2] = {
-    { 7.2f, 4.6f, TRUE }, // Spindel
-    { 4.0f, 3.6f, TRUE }, // Whomp
+static const Vec2f sShadowRectangles[] = {
+    { 7.2f, 4.6f }, // Spindel
+    { 4.0f, 3.6f }, // Whomp
 };
 
 struct Shadow gCurrShadow;
-struct Shadow *s = &gCurrShadow;
+static struct Shadow *const s = &gCurrShadow;
 
 /**
  * Shrink a shadow when its parent object is further from the floor, given the
@@ -179,182 +177,84 @@ static void add_shadow_to_display_list(Gfx *displayListHead, s8 shadowType) {
     gSPEndDisplayList(displayListHead);
 }
 
-//! HACKERSM64_DO:
-//      - Breakout create_shadow_below_xyz into multiple functions
-/**
- * Create a shadow at the absolute position given, with the given parameters.
- * Return a pointer to the display list representing the shadow.
- */
-Gfx *create_shadow_below_xyz(Vec3f pos, s16 shadowScale, u8 shadowSolidity, s8 shadowType, s8 shifted) {
-    struct Object *obj = gCurGraphNodeObjectNode;
-    // Check if the object exists.
-    if (obj == NULL) {
-        return NULL;
+// A graphics or animation offset can move the caster past the edge of its physics floor.
+static s32 shadow_over_actor_floor(const struct Object *obj, const Vec3f pos, const Vec3f feet) {
+    if (obj->gravityDir[1] == -1.0f) return pos[0] == feet[0] && pos[2] == feet[2];
+    Vec3f delta, lateral;
+    vec3_diff(delta, pos, feet);
+    vec3_cross(lateral, delta, obj->gravityDir);
+    return vec3_sumsq(lateral) < 0.0001f;
+}
+
+static struct Surface *find_shadow_floor(const struct Object *obj, const Vec3f pos, f32 range, f32 *distance) {
+    s32 mario = obj == gMarioObject;
+    struct Surface *floor = mario ? gMarioState->floor : obj->oFloor;
+    const f32 *feet = mario ? gMarioState->pos : &obj->oPosVec;
+    if (floor != NULL && obj->oHeldState == HELD_FREE && obj_normal_up(obj, floor->normal) > 0.0f
+        && shadow_over_actor_floor(obj, pos, feet)) {
+        *distance = obj_height(obj, pos) - (mario ? gMarioState->floorHeight : obj->oFloorHeight);
+        return floor;
     }
 
-    // The floor underneath the object.
-    struct Surface *floor;
-    // The y-position of the floor (or water or lava) underneath the object.
-    f32 floorHeight;
-    f32 x = pos[0];
-    f32 y = pos[1];
-    f32 z = pos[2];
-    s8 isPlayer   = (obj == gMarioObject);
-    s8 notHeldObj = (gCurGraphNodeHeldObject == NULL);
+    // Start slightly above the caster so graphics that dip into a slope still cast a shadow.
+    Vec3f origin;
+    struct SurfaceContact hit;
+    obj_offset_up(obj, origin, pos, FIND_FLOOR_BUFFER);
+    *distance = collision_raycast(origin, obj->gravityDir, range + FIND_FLOOR_BUFFER, 0.0f,
+                                  COLLISION_FLAGS_NONE, &hit) - FIND_FLOOR_BUFFER;
+    return hit.surface;
+}
 
-    // Mario's floor is sampled at his physics position. Animation can move the shadow across an edge.
-    if (notHeldObj && isPlayer && x == gMarioState->pos[0] && z == gMarioState->pos[2]) {
-        floor       = gMarioState->floor;
-        floorHeight = gMarioState->floorHeight;
-        shifted = FALSE;
-    } else if (notHeldObj && !isPlayer && gCurGraphNodeObject != &gMirrorMario && obj->oFloor != NULL) {
-        //! Some objects only get their oFloor from bhv_init_room, which skips dynamic floors.
-        floor       = obj->oFloor;
-        floorHeight = obj->oFloorHeight;
-    } else {
-        floorHeight = find_floor(x, y, z, &floor);
-        shifted = FALSE;
-    }
+static s32 project_shadow(const struct Object *obj, Vec3f pos, f32 *distance) {
+    f32 range = obj == gMarioObject ? LEVEL_RAY_LENGTH : 1024.0f;
+    struct Surface *floor = find_shadow_floor(obj, pos, range, distance);
+    f32 waterRange = floor == NULL ? range : MIN(*distance, range);
+    f32 water = raycast_water_surface(pos, obj->gravityDir, waterRange, s->floorNormal);
 
-    // The shadow is a decal by default.
     s->isDecal = TRUE;
-
-    // Check for water under the shadow.
-    struct Surface *waterFloor = NULL;
-    f32 waterLevel = find_water_level_and_floor(x, y, z, &waterFloor);
-
-    // Whether the floor is an environment box rather than an actual surface.
-    s32 isEnvBox = FALSE;
-
-    if (waterLevel > FLOOR_LOWER_LIMIT_MISC
-        && y >= waterLevel
-        && floorHeight <= waterLevel) {
-        // Skip shifting the shadow height later, since the find_water_level_and_floor call above uses the already shifted position.
-        shifted = FALSE;
-
-        // If there is water under the shadow, put the shadow on the water.
-        floorHeight = waterLevel;
-
-        // Don't use the decal layer, since water is transparent.
+    if (water >= 0.0f) {
+        *distance = water;
         s->isDecal = FALSE;
-
-        // Check whether the water is an environment box or a water surface.
-        if (waterFloor != NULL) { // Water surfaces:
-            floor = waterFloor;
-        } else { // Environment boxes:
-            isEnvBox = TRUE;
-        }
-    } else { // Normal surfaces:
-        if (floor == NULL) return NULL;
-        TerrainData type = floor->type;
-        if (type == SURFACE_ICE) {
-            // Ice floors are usually transparent.
+    } else {
+        if (floor == NULL) return FALSE;
+        vec3_set(s->floorNormal, floor->normal.x, floor->normal.y, floor->normal.z);
+        if (floor->type == SURFACE_ICE) {
             s->isDecal = FALSE;
 #ifdef ENABLE_VANILLA_LEVEL_SPECIFIC_CHECKS
-        } else if (type == SURFACE_BURNING) {
-            // Set the shadow height to the lava height in specific areas.
-            correct_lava_shadow_height(&floorHeight);
+        } else if (floor->type == SURFACE_BURNING && floor->normal.y == 1.0f && obj->gravityDir[1] < 0.0f) {
+            f32 lavaY = pos[1] + obj->gravityDir[1] * *distance;
+            correct_lava_shadow_height(&lavaY);
+            if (!s->isDecal) *distance = (lavaY - pos[1]) / obj->gravityDir[1];
 #endif
-        } else if (floor->object != NULL
-                   && floor->object->behavior == segmented_to_virtual(bhvPlatformOnTrack)
+        } else if (floor->object != NULL && floor->object->behavior == segmented_to_virtual(bhvPlatformOnTrack)
                    && floor->object->oPlatformOnTrackType == PLATFORM_ON_TRACK_TYPE_CARPET) {
-            // Raise the shadow 5 units so the shadow doesn't clip into the flying carpet.
-            floorHeight += 5;
-            // The flying carpet is transparent.
+            *distance -= 5.0f;
             s->isDecal = FALSE;
         }
     }
+    if (*distance < -80.0f || *distance > range) return FALSE;
+    obj_add_up(obj, pos, -*distance);
+    return TRUE;
+}
 
-    f32 nx, ny, nz;
-    if (isEnvBox) {
-        // Assume the floor is flat.
-        nx = 0.0f;
-        ny = 1.0f;
-        nz = 0.0f;
-    } else {
-        // Read the floor's normals.
-        nx = floor->normal.x;
-        ny = floor->normal.y;
-        nz = floor->normal.z;
-
-        // No shadow if the y-normal is negative (an unexpected result).
-        if (ny <= 0.0f) {
-            return NULL;
-        }
-
-        // If the animation changes the shadow position, move its height to the new position.
-        if (shifted) {
-            floorHeight = -((x * nx) + (z * nz) + floor->originOffset) / ny;
+Gfx *create_shadow(const struct Object *obj, Vec3f pos, s16 shadowScale, u8 shadowSolidity, s8 shadowType) {
+    if (obj == gMarioObject) {
+        switch (correct_shadow_solidity_for_animations(shadowSolidity)) {
+            case SHADOW_SOLIDITY_NO_SHADOW: return NULL;
+            case SHADOW_SOILDITY_ALREADY_SET: shadowSolidity = 0; break;
         }
     }
-
-    // No shadow if the floor is lower than expected possible,
-    if (floorHeight < FLOOR_LOWER_LIMIT_MISC) {
+    f32 distance;
+    if (!project_shadow(obj, pos, &distance) || init_shadow(distance, shadowScale, shadowType, shadowSolidity)) {
         return NULL;
     }
-
-    // Get the vertical distance to the shadow, now that the final shadow height is set.
-    f32 distToShadow = (y - floorHeight);
-
-    // No shadow if the object is below it.
-    if (distToShadow < -80.0f) {
-        return NULL;
-    }
-
-    // No shadow if the non-Mario object is too high.
-    if (!isPlayer && distToShadow > 1024.0f) {
-        return NULL;
-    }
-
-    vec3f_set(s->floorNormal, nx, ny, nz);
-
-    if (isPlayer) {
-        // Set the shadow solidity manually for certain Mario animations.
-        s32 solidityAction = correct_shadow_solidity_for_animations(shadowSolidity);
-        switch (solidityAction) {
-            case SHADOW_SOLIDITY_NO_SHADOW:
-                return NULL;
-            case SHADOW_SOILDITY_ALREADY_SET:
-                if (init_shadow(distToShadow, shadowScale, shadowType, /* overwriteSolidity */ 0)) {
-                    return NULL;
-                }
-                break;
-            case SHADOW_SOLIDITY_NOT_YET_SET:
-                if (init_shadow(distToShadow, shadowScale, shadowType, shadowSolidity)) {
-                    return NULL;
-                }
-                break;
-            default:
-                return NULL;
-        }
-    } else {
-        if (init_shadow(distToShadow, shadowScale, shadowType, shadowSolidity)) {
-            return NULL;
-        }
-
-        // Get the scaling modifiers for rectangular shadows (Whomp and Spindel).
-        if (shadowType >= SHADOW_RECTANGLE_HARDCODED_OFFSET) {
-            s8 idx = shadowType - SHADOW_RECTANGLE_HARDCODED_OFFSET;
-            s->scale[0] *= sShadowRectangles[idx].scaleX;
-            s->scale[2] *= sShadowRectangles[idx].scaleZ;
-            if (sShadowRectangles[idx].scaleWithDistance) {
-                scale_shadow_with_distance(s->scale[0], distToShadow);
-                scale_shadow_with_distance(s->scale[2], distToShadow);
-            }
-        }
+    if (shadowType >= SHADOW_RECTANGLE_HARDCODED_OFFSET) {
+        const f32 *size = sShadowRectangles[shadowType - SHADOW_RECTANGLE_HARDCODED_OFFSET];
+        s->scale[0] *= size[0];
+        s->scale[2] *= size[1];
     }
 
     Gfx *displayList = alloc_display_list(4 * sizeof(Gfx));
-
-    if (displayList == NULL) {
-        return NULL;
-    }
-
-    // Generate the shadow display list with type and solidity.
-    add_shadow_to_display_list(displayList, shadowType);
-
-    // Move the shadow position to the floor height.
-    pos[1] = floorHeight;
-
+    if (displayList != NULL) add_shadow_to_display_list(displayList, shadowType);
     return displayList;
 }

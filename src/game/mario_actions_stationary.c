@@ -160,7 +160,7 @@ s32 act_idle(struct MarioState *m) {
 #ifdef NO_SLEEP
                 m->actionState = ACT_STATE_IDLE_HEAD_LEFT;
 #else
-                f32 deltaYOfFloorBehindMario = m->pos[1] - find_floor_height_relative_polar(m, -0x8000, 60.0f);
+                f32 deltaYOfFloorBehindMario = obj_height(m->marioObj, m->pos) - find_floor_height_relative_polar(m, -0x8000, 60.0f);
                 if (deltaYOfFloorBehindMario < -24.0f || 24.0f < deltaYOfFloorBehindMario
                     || (m->floor != NULL && (m->floor->flags & SURFACE_FLAG_DYNAMIC))) {
                     m->actionState = ACT_STATE_IDLE_HEAD_LEFT;
@@ -254,7 +254,7 @@ s32 act_sleeping(struct MarioState *m) {
         return set_mario_action(m, ACT_WAKING_UP, m->actionState);
     }
 
-    if (m->pos[1] - find_floor_height_relative_polar(m, -0x8000, 60.0f) > 24.0f) {
+    if (obj_height(m->marioObj, m->pos) - find_floor_height_relative_polar(m, -0x8000, 60.0f) > 24.0f) {
         return set_mario_action(m, ACT_WAKING_UP, m->actionState);
     }
 
@@ -786,9 +786,9 @@ s32 act_shockwave_bounce(struct MarioState *m) {
     mario_set_forward_vel(m, 0);
     vec3_zero(m->vel);
     if (sins(bounceTimer) >= 0.0f) {
-        m->pos[1] = sins(bounceTimer) * bounceAmt + m->floorHeight;
+        obj_set_height(m->marioObj, m->pos, sins(bounceTimer) * bounceAmt + m->floorHeight);
     } else {
-        m->pos[1] = m->floorHeight - sins(bounceTimer) * bounceAmt;
+        obj_set_height(m->marioObj, m->pos, m->floorHeight - sins(bounceTimer) * bounceAmt);
     }
 
     vec3f_copy(m->marioObj->header.gfx.pos, m->pos);

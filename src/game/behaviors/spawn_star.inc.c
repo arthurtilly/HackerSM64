@@ -2,14 +2,13 @@
 
 static struct ObjectHitbox sCollectStarHitbox = {
     /* interactType:      */ INTERACT_STAR_OR_KEY,
-    /* downOffset:        */ 0,
     /* damageOrCoinValue: */ 0,
     /* health:            */ 0,
     /* numLootCoins:      */ 0,
-    /* radius:            */ 80,
-    /* height:            */ 50,
+    /* radius:            */ 61,
+    /* offset:            */ 18,
     /* hurtboxRadius:     */ 0,
-    /* hurtboxHeight:     */ 0,
+    /* hurtboxOffset:     */ 0,
 };
 
 void bhv_collect_star_init(void) {
@@ -39,13 +38,11 @@ void bhv_collect_star_loop(void) {
 }
 
 void bhv_star_spawn_init(void) {
-    s16 yaw;
-    vec3f_get_yaw(&o->oPosVec, &o->oHomeVec, &yaw);
-    vec3f_get_lateral_dist(&o->oPosVec, &o->oHomeVec, &o->oStarSpawnDisFromHome)
-    o->oMoveAngleYaw = yaw;
-    o->oVelY = (o->oHomeY - o->oPosY) / 30.0f;
+    o->oMoveAngleYaw = cur_obj_angle_to_home();
+    o->oStarSpawnDisFromHome = cur_obj_lateral_dist_to_home();
+    o->oVelY = obj_height_difference(o, &o->oHomeVec, &o->oPosVec) / 30.0f;
     o->oForwardVel = o->oStarSpawnDisFromHome / 30.0f;
-    o->oStarSpawnVelY = o->oPosY;
+    o->oStarSpawnVelY = obj_height(o, &o->oPosVec);
 
 #ifdef ENABLE_VANILLA_LEVEL_SPECIFIC_CHECKS
     if (o->oBehParams2ndByte == SPAWN_STAR_ARC_CUTSCENE_BP_DEFAULT_STAR || gCurrCourseNum == COURSE_BBH) {
@@ -74,7 +71,7 @@ void bhv_star_spawn_loop(void) {
         case SPAWN_STAR_ARC_CUTSCENE_ACT_GO_TO_HOME:
             obj_move_xyz_using_fvel_and_yaw(o);
             o->oStarSpawnVelY += o->oVelY;
-            o->oPosY = o->oStarSpawnVelY + sins((o->oTimer * 0x8000) / 30) * 400.0f;
+            obj_set_height(o, &o->oPosVec, o->oStarSpawnVelY + sins((o->oTimer * 0x8000) / 30) * 400.0f);
             o->oFaceAngleYaw += 0x1000;
             spawn_object(o, MODEL_NONE, bhvSparkleSpawn);
             cur_obj_play_sound_1(SOUND_ENV_STAR);
@@ -99,10 +96,10 @@ void bhv_star_spawn_loop(void) {
             o->oFaceAngleYaw = o->oFaceAngleYaw - o->oTimer * 0x10 + 0x1000;
             cur_obj_play_sound_1(SOUND_ENV_STAR);
 
-            if (o->oPosY < o->oHomeY) {
+            if (obj_height(o, &o->oPosVec) < obj_height(o, &o->oHomeVec)) {
                 cur_obj_play_sound_2(SOUND_GENERAL_STAR_APPEARS);
                 cur_obj_become_tangible();
-                o->oPosY = o->oHomeY;
+                obj_set_height(o, &o->oPosVec, obj_height(o, &o->oHomeVec));
                 o->oAction = SPAWN_STAR_ARC_CUTSCENE_ACT_END;
             }
             break;

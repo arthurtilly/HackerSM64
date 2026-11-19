@@ -1,10 +1,10 @@
 // celebration_star.inc.c
 
 void bhv_celebration_star_init(void) {
-    o->oHomeX = gMarioObject->header.gfx.pos[0];
-    o->oPosY = gMarioObject->header.gfx.pos[1] + 30.0f;
-    o->oHomeZ = gMarioObject->header.gfx.pos[2];
-    o->oMoveAngleYaw = gMarioObject->header.gfx.angle[1] + 0x8000;
+    vec3_copy(&o->oHomeVec, gMarioObject->header.gfx.pos);
+    vec3_copy(&o->oPosVec, &o->oHomeVec);
+    obj_add_up(o, &o->oPosVec, 30.0f);
+    o->oMoveAngleYaw = obj_yaw_in_frame(o, gMarioObject, gMarioObject->header.gfx.angle[1]) + 0x8000;
     o->oCelebStarDiameterOfRotation = 100;
     o->oFaceAnglePitch = 0;
     if (obj_has_model(gMarioState->interactObj, MODEL_BOWSER_KEY)) {
@@ -19,9 +19,8 @@ void bhv_celebration_star_init(void) {
 }
 
 void celeb_star_act_spin_around_mario(void) {
-    o->oPosX = o->oHomeX + sins(o->oMoveAngleYaw) * (f32)(o->oCelebStarDiameterOfRotation / 2);
-    o->oPosZ = o->oHomeZ + coss(o->oMoveAngleYaw) * (f32)(o->oCelebStarDiameterOfRotation / 2);
-    o->oPosY += 5.0f;
+    f32 up = obj_height_difference(o, &o->oPosVec, &o->oHomeVec) + 5.0f;
+    obj_offset_forward(o, &o->oPosVec, &o->oHomeVec, o->oMoveAngleYaw, o->oCelebStarDiameterOfRotation / 2, up);
     o->oFaceAngleYaw += 0x1000;
     o->oMoveAngleYaw += 0x2000;
 
@@ -46,7 +45,7 @@ void celeb_star_act_face_camera(void) {
         }
         o->oFaceAngleYaw += 0x1000;
     } else {
-        o->oFaceAngleYaw = gMarioObject->header.gfx.angle[1];
+        o->oFaceAngleYaw = obj_yaw_in_frame(o, gMarioObject, gMarioObject->header.gfx.angle[1]);
     }
 
     if (o->oTimer == 59) {
@@ -67,7 +66,7 @@ void bhv_celebration_star_loop(void) {
 }
 
 void bhv_celebration_star_sparkle_loop(void) {
-    o->oPosY -= 15.0f;
+    obj_add_up(o, &o->oPosVec, -15.0f);
 
     if (o->oTimer == 12) {
         o->activeFlags = ACTIVE_FLAG_DEACTIVATED;

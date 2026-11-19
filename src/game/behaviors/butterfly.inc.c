@@ -14,22 +14,15 @@ void butterfly_step(s32 speed) {
     f32 floorY;
 
     o->oVelX = sins(yaw) * (f32) speed;
-    o->oVelY = sins(pitch) * (f32) speed;
+    o->oVelY = -sins(pitch) * (f32) speed;
     o->oVelZ = coss(yaw) * (f32) speed;
+    if (o->oAction == BUTTERFLY_ACT_FOLLOW_MARIO) o->oVelY -= coss((s32)(yPhase * 655.36f)) * 5.0f;
+    cur_obj_move_using_vel();
 
-    o->oPosX += o->oVelX;
-    o->oPosZ += o->oVelZ;
+    floorY = find_actor_floor(o, &o->oPosVec, 0.0f, NULL);
 
-    if (o->oAction == BUTTERFLY_ACT_FOLLOW_MARIO) {
-        o->oPosY -= o->oVelY + coss((s32)(yPhase * 655.36f)) * 5.0f; // * 20.0f / 4;
-    } else {
-        o->oPosY -= o->oVelY;
-    }
-
-    floorY = find_floor_height(o->oPosX, o->oPosY, o->oPosZ);
-
-    if (o->oPosY < floorY + 2.0f) {
-        o->oPosY = floorY + 2.0f;
+    if (obj_height(o, &o->oPosVec) < floorY + 2.0f) {
+        obj_set_height(o, &o->oPosVec, floorY + 2.0f);
     }
 
     o->oButterflyYPhase++;
@@ -39,16 +32,13 @@ void butterfly_step(s32 speed) {
 }
 
 void butterfly_calculate_angle(void) {
-    s32 yPhase = 5 * o->oButterflyYPhase / 4;
-    gMarioObject->oPosX += yPhase;
-    gMarioObject->oPosZ += yPhase;
-    obj_turn_toward_object(o, gMarioObject, O_MOVE_ANGLE_YAW_INDEX, 0x300);
-    gMarioObject->oPosX -= yPhase;
-    gMarioObject->oPosZ -= yPhase;
-    yPhase = (5 * o->oButterflyYPhase + 0x100) / 4;
-    gMarioObject->oPosY += yPhase;
-    obj_turn_toward_object(o, gMarioObject, O_MOVE_ANGLE_PITCH_INDEX, 0x500);
-    gMarioObject->oPosY -= yPhase;
+    Vec3f target;
+    obj_local_delta(o, target, &gMarioObject->oPosVec, &o->oPosVec);
+    f32 sway = 5 * o->oButterflyYPhase / 4;
+    s16 yaw = atan2s(target[2] + sway, target[0] + sway);
+    s16 pitch = atan2s(sqrtf(sqr(target[0]) + sqr(target[2])), -target[1] - sway - 64.0f);
+    o->oMoveAngleYaw = approach_angle(o->oMoveAngleYaw, yaw, 0x300);
+    o->oMoveAnglePitch = approach_angle(o->oMoveAnglePitch, pitch, 0x500);
 }
 
 void butterfly_act_rest(void) {
@@ -56,7 +46,7 @@ void butterfly_act_rest(void) {
         cur_obj_init_animation(BUTTERFLY_ANIM_FLYING);
 
         o->oAction = BUTTERFLY_ACT_FOLLOW_MARIO;
-        o->oMoveAngleYaw = gMarioObject->header.gfx.angle[1];
+        o->oMoveAngleYaw = obj_yaw_in_frame(o, gMarioObject, gMarioObject->header.gfx.angle[1]);
     }
 }
 
@@ -72,7 +62,7 @@ void butterfly_act_follow_mario(void) {
 
 void butterfly_act_return_home(void) {
     Vec3f homeDist;
-    vec3f_diff(homeDist, &o->oHomeVec, &o->oPosVec);
+    obj_local_delta(o, homeDist, &o->oHomeVec, &o->oPosVec);
     f32 homeDistXSq  = sqr(homeDist[0]);
     f32 homeDistZSq  = sqr(homeDist[2]);
     s16 hAngleToHome = atan2s(homeDist[2], homeDist[0]);

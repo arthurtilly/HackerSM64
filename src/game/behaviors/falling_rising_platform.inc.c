@@ -6,7 +6,7 @@ void bhv_squishable_platform_loop(void) {
 }
 
 void bhv_bitfs_sinking_platform_loop(void) {
-    o->oPosY -= sins(o->oBitfsPlatformTimer) * 0.58f;
+    obj_add_up(o, &o->oPosVec, -sins(o->oBitfsPlatformTimer) * 0.58f);
     o->oBitfsPlatformTimer += 0x100;
 }
 
@@ -18,11 +18,11 @@ void bhv_ddd_moving_pole_loop(void) {
 void bhv_bitfs_sinking_cage_platform_loop(void) {
     if (o->oBehParams2ndByte != 0) {
         if (o->oTimer == 0) {
-            o->oPosY -= 300.0f;
+            obj_add_up(o, &o->oPosVec, -300.0f);
         }
-        o->oPosY += sins(o->oBitfsPlatformTimer) * 7.0f;
+        obj_add_up(o, &o->oPosVec, sins(o->oBitfsPlatformTimer) * 7.0f);
     } else {
-        o->oPosY -= sins(o->oBitfsPlatformTimer) * 3.0f;
+        obj_add_up(o, &o->oPosVec, -sins(o->oBitfsPlatformTimer) * 3.0f);
     }
 
     o->oBitfsPlatformTimer += 0x100;

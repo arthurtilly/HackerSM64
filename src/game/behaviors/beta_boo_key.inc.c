@@ -127,7 +127,7 @@ static void beta_boo_key_drop(void) {
 
         // Make the key move laterally away from Mario at 3 units/frame
         // (as if he transferred kinetic energy to it)
-        velocityDirection = gMarioObject->oMoveAngleYaw;
+        velocityDirection = obj_yaw_in_frame(o, gMarioObject, gMarioObject->oMoveAngleYaw);
         velocityMagnitude = 3.0f;
 
         o->oVelX = sins(velocityDirection) * velocityMagnitude;
@@ -152,7 +152,7 @@ static void beta_boo_key_inside_boo_loop(void) {
 
     // Use a Y offset of 40 to make the key model aligned correctly.
     // (Why didn't they use oGraphYOffset?)
-    o->oPosY += 40.0f;
+    obj_add_up(o, &o->oPosVec, 40.0f);
 
     // If the boo is dying/dead, set the action to BETA_BOO_KEY_ACT_DROPPING.
     if (parent->oBooDeathStatus != BOO_DEATH_STATUS_ALIVE) {

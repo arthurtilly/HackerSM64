@@ -2,14 +2,13 @@
 
 struct ObjectHitbox sSkullSlidingBoxHitbox = {
     /* interactType:      */ INTERACT_DAMAGE,
-    /* downOffset:        */ 0,
     /* damageOrCoinValue: */ 1,
     /* health:            */ 1,
     /* numLootCoins:      */ 0,
-    /* radius:            */ 130,
-    /* height:            */ 100,
+    /* radius:            */ 108,
+    /* offset:            */ 39,
     /* hurtboxRadius:     */ 0,
-    /* hurtboxHeight:     */ 0,
+    /* hurtboxOffset:     */ 0,
 };
 
 void bhv_sunken_ship_part_loop(void) {

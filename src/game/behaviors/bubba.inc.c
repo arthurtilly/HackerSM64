@@ -2,14 +2,13 @@
 
 static struct ObjectHitbox sBubbaHitbox = {
     /* interactType:      */ INTERACT_CLAM_OR_BUBBA,
-    /* downOffset:        */ 0,
     /* damageOrCoinValue: */ 1,
     /* health:            */ 99,
     /* numLootCoins:      */ 0,
-    /* radius:            */ 300,
-    /* height:            */ 200,
-    /* hurtboxRadius:     */ 300,
-    /* hurtboxHeight:     */ 200,
+    /* radius:            */ 257,
+    /* offset:            */ 85,
+    /* hurtboxRadius:     */ 244,
+    /* hurtboxOffset:     */ 85,
 };
 
 void bubba_act_idle(void) {
@@ -70,7 +69,7 @@ void bubba_act_attack(void) {
             obj_move_pitch_approach(o->oBubbaTargetPitch, 400);
         }
     } else {
-        if (abs_angle_diff(gMarioObject->oFaceAngleYaw, o->oAngleToMario) < 0x3000) {
+        if (abs_angle_diff(obj_yaw_in_frame(o, gMarioObject, gMarioObject->oFaceAngleYaw), o->oAngleToMario) < 0x3000) {
             s16 targetDYaw = 0x4000 - atan2s(800.0f, o->oDistanceToMario - 800.0f);
             if ((s16)(o->oMoveAngleYaw - o->oAngleToMario) < 0) {
                 targetDYaw = -targetDYaw;
@@ -156,7 +155,7 @@ void bhv_bubba_loop(void) {
     cur_obj_move_standard(78);
 
     o->oFloorHeight += 150.0f;
-    if (o->oPosY < o->oFloorHeight) {
-        o->oPosY = o->oFloorHeight;
+    if (obj_height(o, &o->oPosVec) < o->oFloorHeight) {
+        obj_set_height(o, &o->oPosVec, o->oFloorHeight);
     }
 }

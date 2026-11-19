@@ -3,14 +3,13 @@
 // Mr. Blizzard hitbox
 struct ObjectHitbox sMrBlizzardHitbox = {
     /* interactType:      */ INTERACT_MR_BLIZZARD,
-    /* downOffset:        */ 24,
     /* damageOrCoinValue: */ 2,
     /* health:            */ 99,
     /* numLootCoins:      */ 3,
-    /* radius:            */ 65,
-    /* height:            */ 170,
-    /* hurtboxRadius:     */ 65,
-    /* hurtboxHeight:     */ 170,
+    /* radius:            */ 70,
+    /* offset:            */ 55,
+    /* hurtboxRadius:     */ 46,
+    /* hurtboxOffset:     */ 54,
 };
 
 static struct SpawnParticlesInfo sMrBlizzardParticlesInfo = {
@@ -117,7 +116,7 @@ static void mr_blizzard_act_rise_from_ground(void) {
         // Then, Mr. Blizzard's Y-position is increased by the value of
         // GraphYOffset minus 24, GraphYOffset is
         // set to 24, VelY is set to GraphYVel and action is moved to rotate.
-        o->oPosY += o->oMrBlizzardGraphYOffset - 24.0f;
+        obj_add_up(o, &o->oPosVec, o->oMrBlizzardGraphYOffset - 24.0f);
         o->oMrBlizzardGraphYOffset = 24.0f;
 
         mr_blizzard_spawn_white_particles(8, -20, 20, 15, 10);
@@ -402,7 +401,7 @@ static void mr_blizzard_snowball_act_1(void) {
             }
 
             // Launch the snowball relative to Mario's distance from the snowball.
-            o->oMoveAngleYaw = (s32)(o->parentObj->oMoveAngleYaw + 4000 - marioDist * 4.0f);
+            o->oMoveAngleYaw = (s32)(obj_yaw_in_frame(o, o->parentObj, o->parentObj->oMoveAngleYaw) + 4000 - marioDist * 4.0f);
             o->oForwardVel = 40.0f;
             o->oVelY = -20.0f + marioDist * 0.075f;
         }
@@ -415,14 +414,13 @@ static void mr_blizzard_snowball_act_1(void) {
 // Snowball hitbox.
 struct ObjectHitbox sMrBlizzardSnowballHitbox = {
     /* interactType:      */ INTERACT_MR_BLIZZARD,
-    /* downOffset:        */ 12,
     /* damageOrCoinValue: */ 1,
     /* health:            */ 99,
     /* numLootCoins:      */ 0,
-    /* radius:            */ 30,
-    /* height:            */ 30,
-    /* hurtboxRadius:     */ 25,
-    /* hurtboxHeight:     */ 25,
+    /* radius:            */ 24,
+    /* offset:            */ 1,
+    /* hurtboxRadius:     */ 18,
+    /* hurtboxOffset:     */ 1,
 };
 
 /**

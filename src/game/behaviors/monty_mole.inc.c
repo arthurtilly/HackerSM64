@@ -156,12 +156,11 @@ static void monty_mole_act_select_hole(void) {
         o->oMontyMoleCurrentHole->oMontyMoleHoleCooldown = -1;
 
         // Position at hole
-        o->oPosX = o->oMontyMoleCurrentHole->oPosX;
-        o->oPosY = o->oFloorHeight = o->oMontyMoleCurrentHole->oPosY;
-        o->oPosZ = o->oMontyMoleCurrentHole->oPosZ;
+        obj_copy_pos(o, o->oMontyMoleCurrentHole);
+        o->oFloorHeight = obj_height(o, &o->oPosVec);
 
         o->oFaceAnglePitch = 0;
-        o->oMoveAngleYaw = o->oMontyMoleCurrentHole->oAngleToMario;
+        o->oMoveAngleYaw = obj_angle_to_object(o, gMarioObject);
 
         if (o->oDistanceToMario > 500.0f || minDistToMario > 100.0f || random_sign() < 0) {
             o->oAction = MONTY_MOLE_ACT_RISE_FROM_HOLE;
@@ -187,7 +186,7 @@ static void monty_mole_act_rise_from_hole(void) {
     cur_obj_init_animation_with_sound(1);
 
     if (o->oMontyMoleHeightRelativeToFloor >= 49.0f) {
-        o->oPosY = o->oFloorHeight + 50.0f;
+        obj_set_height(o, &o->oPosVec, o->oFloorHeight + 50.0f);
         o->oVelY = 0.0f;
 
         if (cur_obj_check_if_near_animation_end()) {
@@ -299,7 +298,7 @@ static void monty_mole_act_jump_out_of_hole(void) {
         cur_obj_init_anim_extend(4);
 
         if (o->oMontyMoleHeightRelativeToFloor < 50.0f) {
-            o->oPosY = o->oFloorHeight + 50.0f;
+            obj_set_height(o, &o->oPosVec, o->oFloorHeight + 50.0f);
             o->oAction = MONTY_MOLE_ACT_BEGIN_JUMP_INTO_HOLE;
             o->oVelY = o->oGravity = 0.0f;
         }
@@ -311,14 +310,13 @@ static void monty_mole_act_jump_out_of_hole(void) {
  */
 static struct ObjectHitbox sMontyMoleHitbox = {
     /* interactType:      */ INTERACT_BOUNCE_TOP,
-    /* downOffset:        */ 0,
     /* damageOrCoinValue: */ 2,
     /* health:            */ -1,
     /* numLootCoins:      */ 0,
-    /* radius:            */ 70,
-    /* height:            */ 50,
-    /* hurtboxRadius:     */ 30,
-    /* hurtboxHeight:     */ 40,
+    /* radius:            */ 50,
+    /* offset:            */ 10,
+    /* hurtboxRadius:     */ 18,
+    /* hurtboxOffset:     */ 18,
 };
 
 /**
@@ -330,7 +328,7 @@ void bhv_monty_mole_update(void) {
     o->oDeathSound = SOUND_OBJ_DYING_ENEMY1;
     cur_obj_update_floor_and_walls();
 
-    o->oMontyMoleHeightRelativeToFloor = o->oPosY - o->oFloorHeight;
+    o->oMontyMoleHeightRelativeToFloor = obj_height(o, &o->oPosVec) - o->oFloorHeight;
 
     switch (o->oAction) {
         case MONTY_MOLE_ACT_SELECT_HOLE:
@@ -410,7 +408,7 @@ static void monty_mole_rock_act_held(void) {
         o->oAction = MONTY_MOLE_ROCK_ACT_MOVE;
 
         // The angle is adjusted to compensate for the start position offset
-        o->oMoveAngleYaw = (s32)(o->parentObj->oMoveAngleYaw + 500 - distToMario * 0.1f);
+        o->oMoveAngleYaw = (s32)(obj_yaw_in_frame(o, o->parentObj, o->parentObj->oMoveAngleYaw) + 500 - distToMario * 0.1f);
 
         o->oForwardVel = 40.0f;
         o->oVelY = distToMario * 0.08f + 8.0f;
@@ -424,14 +422,13 @@ static void monty_mole_rock_act_held(void) {
  */
 static struct ObjectHitbox sMontyMoleRockHitbox = {
     /* interactType:      */ INTERACT_MR_BLIZZARD,
-    /* downOffset:        */ 15,
     /* damageOrCoinValue: */ 1,
     /* health:            */ 99,
     /* numLootCoins:      */ 0,
-    /* radius:            */ 30,
-    /* height:            */ 15,
-    /* hurtboxRadius:     */ 30,
-    /* hurtboxHeight:     */ 15,
+    /* radius:            */ 24,
+    /* offset:            */ -7,
+    /* hurtboxRadius:     */ 20,
+    /* hurtboxOffset:     */ -5,
 };
 
 /**

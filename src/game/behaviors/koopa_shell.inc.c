@@ -2,14 +2,13 @@
 
 struct ObjectHitbox sKoopaShellHitbox = {
     .interactType      = INTERACT_KOOPA_SHELL,
-    .downOffset        = 0,
     .damageOrCoinValue = 4,
     .health            = 1,
     .numLootCoins      = 1,
-    .radius            = 50,
-    .height            = 50,
-    .hurtboxRadius     = 50,
-    .hurtboxHeight     = 50,
+    .radius            = 40,
+    .offset            = 20,
+    .hurtboxRadius     = 32,
+    .hurtboxOffset     = 20,
 };
 
 void check_shell_despawn(void) {
@@ -42,7 +41,7 @@ void bhv_koopa_shell_flame_loop(void) {
     cur_obj_update_floor_height();
     cur_obj_move_using_fvel_and_gravity();
 
-    if (o->oFloorHeight > o->oPosY || o->oTimer > 10) {
+    if (o->oFloorHeight > obj_height(o, &o->oPosVec) || o->oTimer > 10) {
         obj_mark_for_deletion(o);
     }
 
@@ -59,7 +58,7 @@ void bhv_koopa_shell_flame_spawn(void) {
 
 void koopa_shell_spawn_sparkles(f32 a) {
     struct Object *sparkleObj = spawn_object(o, MODEL_NONE, bhvSparkleSpawn);
-    sparkleObj->oPosY += a;
+    obj_add_up(sparkleObj, &sparkleObj->oPosVec, a);
 }
 
 void bhv_koopa_shell_loop(void) {
@@ -88,7 +87,7 @@ void bhv_koopa_shell_loop(void) {
 
             if (absf(find_water_level(o->oPosX, o->oPosZ) - o->oPosY) < 10.0f) {
                 koopa_shell_spawn_water_drop();
-            } else if (absf(o->oPosY - o->oFloorHeight) < 5.0f) {
+            } else if (absf(obj_height(o, &o->oPosVec) - o->oFloorHeight) < 5.0f) {
                 if (floor != NULL && floor->type == SURFACE_BURNING) {
                     bhv_koopa_shell_flame_spawn();
                 } else {
@@ -98,7 +97,7 @@ void bhv_koopa_shell_loop(void) {
                 koopa_shell_spawn_sparkles(10.0f);
             }
 
-            o->oFaceAngleYaw = gMarioObject->oMoveAngleYaw;
+            o->oFaceAngleYaw = obj_yaw_in_frame(o, gMarioObject, gMarioObject->oMoveAngleYaw);
 
             if (o->oInteractStatus & INT_STATUS_STOP_RIDING) {
                 obj_mark_for_deletion(o);

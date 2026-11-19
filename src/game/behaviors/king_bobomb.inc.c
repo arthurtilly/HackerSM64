@@ -40,13 +40,13 @@ void king_bobomb_act_inactive(void) { // act 0
 }
 
 s32 mario_is_far_below_object(f32 min) {
-    return min < o->oPosY - gMarioObject->oPosY;
+    return obj_height_difference(o, &o->oPosVec, &gMarioObject->oPosVec) > min;
 }
 
 void king_bobomb_act_active(void) { // act 2
     cur_obj_become_tangible();
 
-    if (o->oPosY - o->oHomeY < -100.0f) { // Thrown off hill
+    if (obj_height_difference(o, &o->oPosVec, &o->oHomeVec) < -100.0f) { // Thrown off hill
         o->oAction = KING_BOBOMB_ACT_RETURN_HOME;
         cur_obj_become_intangible();
     }
@@ -216,7 +216,7 @@ void king_bobomb_act_stop_music(void) { // act 8
 }
 
 void king_bobomb_act_been_thrown(void) { // act 4
-    if (o->oPosY - o->oHomeY > -100.0f) { // not thrown off hill
+    if (obj_height_difference(o, &o->oPosVec, &o->oHomeVec) > -100.0f) { // not thrown off hill
         if (o->oMoveFlags & OBJ_MOVE_LANDED) {
             o->oHealth--;
 
@@ -257,7 +257,7 @@ void king_bobomb_act_return_home(void) { // act 5
             cur_obj_init_animation_and_extend_if_at_end(KING_BOBOMB_ANIM_JUMP);
             o->oMoveAngleYaw = cur_obj_angle_to_home();
 
-            if (o->oPosY < o->oHomeY) {
+            if (obj_height(o, &o->oPosVec) < obj_height(o, &o->oHomeVec)) {
                 o->oVelY = 100.0f;
             } else {
                 arc_to_goal_pos(&o->oHomeX, &o->oPosVec, 100.0f, -4.0f);
@@ -268,8 +268,8 @@ void king_bobomb_act_return_home(void) { // act 5
         case KING_BOBOMB_SUB_ACT_RETURN_HOME_LANDING:
             cur_obj_init_animation_and_extend_if_at_end(KING_BOBOMB_ANIM_JUMP);
 
-            if (o->oVelY < 0 && o->oPosY < o->oHomeY) {
-                o->oPosY = o->oHomeY;
+            if (o->oVelY < 0 && obj_height(o, &o->oPosVec) < obj_height(o, &o->oHomeVec)) {
+                obj_set_height(o, &o->oPosVec, obj_height(o, &o->oHomeVec));
                 o->oVelY = 0;
                 o->oForwardVel = 0;
                 o->oGravity = -4.0f;
@@ -370,7 +370,7 @@ void bhv_king_bobomb_loop(void) {
         case HELD_DROPPED:
             cur_obj_get_thrown_or_placed(20.0f, 50.0f, 4);
             cur_obj_become_intangible();
-            o->oPosY += 20.0f;
+            obj_add_up(o, &o->oPosVec, 20.0f);
             break;
     }
 

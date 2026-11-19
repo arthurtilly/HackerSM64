@@ -2,10 +2,10 @@
 
 void bhv_lll_wood_piece_loop(void) {
     if (o->oTimer == 0) {
-        o->oPosY -= 100.0f;
+        obj_add_up(o, &o->oPosVec, -100.0f);
     }
 
-    o->oPosY += sins(o->oLllWoodPieceOscillationTimer) * 3.0f;
+    obj_add_up(o, &o->oPosVec, sins(o->oLllWoodPieceOscillationTimer) * 3.0f);
     o->oLllWoodPieceOscillationTimer += 0x400;
 
     if (o->parentObj->oAction == 2) {
