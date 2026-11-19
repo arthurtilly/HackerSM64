@@ -70,8 +70,7 @@ void bhv_koopa_shell_loop(void) {
 
     switch (o->oAction) {
         case KOOPA_SHELL_ACT_MARIO_NOT_RIDING:
-            cur_obj_update_floor_and_walls();
-            cur_obj_if_hit_wall_bounce_away();
+            cur_obj_update_floor_and_bounce_off_walls();
 
             if (o->oInteractStatus & INT_STATUS_INTERACTED) {
                 o->oAction = KOOPA_SHELL_ACT_MARIO_RIDING;

@@ -19,262 +19,170 @@
 
 #include "config.h"
 
-/**
- * Partitions for course and object surfaces. The arrays represent
- * the 16x16 cells that each level is split into.
- */
-SpatialPartitionCell gStaticSurfacePartition[NUM_CELLS][NUM_CELLS];
-SpatialPartitionCell gDynamicSurfacePartition[NUM_CELLS][NUM_CELLS];
-struct CellCoords {
-    u8 z;
-    u8 x;
-    u8 partition;
+static u8 *sDynamicSurfacePool;
+
+struct SurfaceBatch {
+    struct Surface *surfaces;
+    u32 count, capacity;
 };
-struct CellCoords sCellsUsed[NUM_CELLS];
-u16 sNumCellsUsed;
-u8 sClearAllCells;
 
-/**
- * Pools of data that can contain either surface nodes or surfaces.
- * The static surface pool is resized to be exactly the amount of memory needed for the level geometry.
- * The dynamic surface pool is set at a fixed length and cleared every frame.
- */
-void *gCurrStaticSurfacePool;
-void *gDynamicSurfacePool;
+#define SURFACES_PER_LEAF 8
 
-/**
- * The end of the data currently allocated to the surface pools.
- */
-void *gCurrStaticSurfacePoolEnd;
-void *gDynamicSurfacePoolEnd;
+struct SurfaceIndex gStaticSurfaceIndex, gDynamicSurfaceIndex;
 
-/**
- * The amount of data currently allocated to static surfaces.
- */
-u32 gTotalStaticSurfaceData;
-
-/**
- * Allocate the part of the surface node pool to contain a surface node.
- */
-static struct SurfaceNode *alloc_surface_node(u32 dynamic) {
-    struct SurfaceNode **poolEnd = (struct SurfaceNode **)(dynamic ? &gDynamicSurfacePoolEnd : &gCurrStaticSurfacePoolEnd);
-
-    struct SurfaceNode *node = *poolEnd;
-    (*poolEnd)++;
-    gSurfaceNodesAllocated++;
-
-    node->next = NULL;
-
-    return node;
+static ALWAYS_INLINE s32 centroid_sum(struct Surface *s, s32 axis) {
+    return s->vertex1[axis] + s->vertex2[axis] + s->vertex3[axis];
 }
 
-/**
- * Allocate the part of the surface pool to contain a surface and
- * initialize the surface.
- */
-static struct Surface *alloc_surface(u32 dynamic) {
-    struct Surface **poolEnd = (struct Surface **)(dynamic ? &gDynamicSurfacePoolEnd : &gCurrStaticSurfacePoolEnd);
-    
-    struct Surface *surface = *poolEnd;
-    (*poolEnd)++;
-    gSurfacesAllocated++;
-
-    surface->type = SURFACE_DEFAULT;
-    surface->force = 0;
-    surface->flags = SURFACE_FLAGS_NONE;
-    surface->room = 0;
-    surface->object = NULL;
-
-    return surface;
-}
-
-/**
- * Add a surface to the correct cell list of surfaces.
- * @param dynamic Determines whether the surface is static or dynamic
- * @param cellX The X position of the cell in which the surface resides
- * @param cellZ The Z position of the cell in which the surface resides
- * @param surface The surface to add
- */
-static void add_surface_to_cell(s32 dynamic, s32 cellX, s32 cellZ, struct Surface *surface) {
-    struct SurfaceNode **list;
-    s32 priority;
-    s32 sortDir = 1; // highest to lowest, then insertion order (water and floors)
-    s32 listIndex;
-
-    if (SURFACE_IS_NEW_WATER(surface->type)) {
-        listIndex = SPATIAL_PARTITION_WATER;
-    } else if (surface->normal.y > NORMAL_FLOOR_THRESHOLD) {
-        listIndex = SPATIAL_PARTITION_FLOORS;
-    } else if (surface->normal.y < NORMAL_CEIL_THRESHOLD) {
-        listIndex = SPATIAL_PARTITION_CEILS;
-        sortDir = -1; // lowest to highest, then insertion order
-    } else {
-        listIndex = SPATIAL_PARTITION_WALLS;
-        sortDir = 0; // insertion order
+// Partition the references at the median without moving any Surface objects.
+static void split_surfaces(struct SurfaceTree *tree, u16 *indices, s32 first, s32 end, s32 mid) {
+    Vec3i min, max;
+    for (s32 axis = 0; axis < 3; axis++) {
+        min[axis] = max[axis] = centroid_sum(&tree->surfaces[indices[first]], axis);
     }
-
-    s32 surfacePriority = surface->upperY * sortDir;
-
-    struct SurfaceNode *newNode = alloc_surface_node(dynamic);
-    newNode->surface = surface;
-
-    if (dynamic) {
-        list = &gDynamicSurfacePartition[cellZ][cellX][listIndex];
-        if (sNumCellsUsed >= sizeof(sCellsUsed) / sizeof(struct CellCoords)) {
-            sClearAllCells = TRUE;
-        } else {
-            if (*list == NULL) {
-                sCellsUsed[sNumCellsUsed].z = cellZ;
-                sCellsUsed[sNumCellsUsed].x = cellX;
-                sCellsUsed[sNumCellsUsed].partition = listIndex;
-                sNumCellsUsed++;
+    for (s32 i = first + 1; i < end; i++) {
+        struct Surface *s = &tree->surfaces[indices[i]];
+        for (s32 axis = 0; axis < 3; axis++) {
+            s32 center = centroid_sum(s, axis);
+            min[axis] = MIN(min[axis], center);
+            max[axis] = MAX(max[axis], center);
+        }
+    }
+    s32 axis = 0;
+    for (s32 i = 1; i < 3; i++) {
+        if (max[i] - min[i] > max[axis] - min[axis]) axis = i;
+    }
+    while (end - first > 1) {
+        s32 pivot = centroid_sum(&tree->surfaces[indices[(first + end) / 2]], axis);
+        s32 lo = first, hi = end - 1;
+        while (lo <= hi) {
+            while (centroid_sum(&tree->surfaces[indices[lo]], axis) < pivot) lo++;
+            while (centroid_sum(&tree->surfaces[indices[hi]], axis) > pivot) hi--;
+            if (lo <= hi) {
+                u16 tmp = indices[lo];
+                indices[lo++] = indices[hi];
+                indices[hi--] = tmp;
             }
         }
-    } else {
-        list = &gStaticSurfacePartition[cellZ][cellX][listIndex];
+        if (mid <= hi) end = hi + 1;
+        else if (mid >= lo) first = lo;
+        else break;
     }
+}
 
-    if (*list == NULL) {
-        *list = newNode;
-        return;
-    }
-
-    struct SurfaceNode *curNode = *list;
-
-    // Check if surface should be placed at the beginning of the list.
-    priority = curNode->surface->upperY * sortDir;
-    if (surfacePriority > priority) {
-        *list = newNode;
-        newNode->next = curNode;
-        return;
-    }
-
-    // Loop until we find the appropriate place for the surface in the list.
-    while (curNode->next != NULL) {
-        priority = curNode->next->surface->upperY * sortDir;
-
-        if (surfacePriority > priority) {
-            break;
+static u32 build_node(struct SurfaceTree *tree, u16 *indices, u32 nodeIndex, s32 first, s32 end) {
+    struct SurfaceBvhNode *node = &tree->nodes[nodeIndex];
+    s32 count = end - first;
+    if (count <= SURFACES_PER_LEAF) {
+        struct Surface *s = &tree->surfaces[indices[first]];
+        vec3_copy(node->min, s->vertex1);
+        vec3_copy(node->max, s->vertex1);
+        for (s32 i = first; i < end; i++) {
+            s = &tree->surfaces[indices[i]];
+            for (s32 axis = 0; axis < 3; axis++) {
+                node->min[axis] = MIN(node->min[axis], min_3(s->vertex1[axis], s->vertex2[axis], s->vertex3[axis]));
+                node->max[axis] = MAX(node->max[axis], max_3(s->vertex1[axis], s->vertex2[axis], s->vertex3[axis]));
+            }
         }
-
-        curNode = curNode->next;
+        node->offset = first;
+        node->count = count;
+        return nodeIndex + 1;
     }
 
-    newNode->next = curNode->next;
-    curNode->next = newNode;
-}
-
-/**
- * Every level is split into CELL_SIZE * CELL_SIZE cells of surfaces (to limit computing
- * time). This function determines the lower cell for a given x/z position.
- * @param coord The coordinate to test
- */
-static s32 lower_cell_index(s32 coord) {
-    // Move from range [-LEVEL_BOUNDARY_MAX, LEVEL_BOUNDARY_MAX) to [0, 2 * LEVEL_BOUNDARY_MAX)
-    coord += LEVEL_BOUNDARY_MAX;
-    if (coord < 0) {
-        coord = 0;
+    s32 leaves = (count + SURFACES_PER_LEAF - 1) / SURFACES_PER_LEAF;
+    s32 mid = first + (leaves / 2) * SURFACES_PER_LEAF;
+    split_surfaces(tree, indices, first, end, mid);
+    u32 left = nodeIndex + 1;
+    u32 right = build_node(tree, indices, left, first, mid);
+    u32 next = build_node(tree, indices, right, mid, end);
+    for (s32 i = 0; i < 3; i++) {
+        node->min[i] = MIN(tree->nodes[left].min[i], tree->nodes[right].min[i]);
+        node->max[i] = MAX(tree->nodes[left].max[i], tree->nodes[right].max[i]);
     }
-
-    // [0, NUM_CELLS)
-    s32 index = coord / CELL_SIZE;
-
-    // Potentially > NUM_CELLS - 1, but since the upper index is <= NUM_CELLS - 1, not exploitable
-    return MAX(0, index);
+    node->offset = next;
+    node->count = 0;
+    return next;
 }
 
-/**
- * Every level is split into CELL_SIZE * CELL_SIZE cells of surfaces (to limit computing
- * time). This function determines the upper cell for a given x/z position.
- * @param coord The coordinate to test
- */
-static s32 upper_cell_index(s32 coord) {
-    // Move from range [-LEVEL_BOUNDARY_MAX, LEVEL_BOUNDARY_MAX) to [0, 2 * LEVEL_BOUNDARY_MAX)
-    coord += LEVEL_BOUNDARY_MAX;
-    if (coord < 0) {
-        coord = 0;
-    }
-
-    // [0, NUM_CELLS)
-    s32 index = coord / CELL_SIZE;
-
-    // Potentially < 0, but since lower index is >= 0, not exploitable
-    return MIN((NUM_CELLS - 1), index);
-}
-
-/**
- * Every level is split into 16x16 cells, this takes a surface, finds
- * the appropriate cells (with a buffer), and adds the surface to those
- * cells.
- * @param surface The surface to check
- * @param dynamic Boolean determining whether the surface is static or dynamic
- */
-static void add_surface(struct Surface *surface, s32 dynamic) {
-    s32 cellZ, cellX;
-    s32 minX, maxX, minZ, maxZ;
-
-    min_max_3i(surface->vertex1[0], surface->vertex2[0], surface->vertex3[0], &minX, &maxX);
-    min_max_3i(surface->vertex1[2], surface->vertex2[2], surface->vertex3[2], &minZ, &maxZ);
-
-    s32 minCellX = lower_cell_index(minX);
-    s32 maxCellX = upper_cell_index(maxX);
-    s32 minCellZ = lower_cell_index(minZ);
-    s32 maxCellZ = upper_cell_index(maxZ);
-
-    for (cellZ = minCellZ; cellZ <= maxCellZ; cellZ++) {
-        for (cellX = minCellX; cellX <= maxCellX; cellX++) {
-            add_surface_to_cell(dynamic, cellX, cellZ, surface);
+// Pack each leaf's triangles together. The permutation is scratch space reclaimed
+// after construction, and queries can walk a leaf with a single pointer.
+static void reorder_surfaces(struct Surface *surfaces, u16 *indices, u32 count) {
+    for (u32 i = 0; i < count; i++) {
+        if (indices[i] == i) continue;
+        struct Surface saved = surfaces[i];
+        u32 dst = i;
+        while (indices[dst] != i) {
+            u32 src = indices[dst];
+            surfaces[dst] = surfaces[src];
+            indices[dst] = dst;
+            dst = src;
         }
+        surfaces[dst] = saved;
+        indices[dst] = dst;
     }
 }
 
-/**
- * Initializes a Surface struct using the given vertex data
- * @param vertexData The raw data containing vertex positions
- * @param vertexIndices Helper which tells positions in vertexData to start reading vertices
- * @param dynamic If the surface belongs to an object or not
- */
-static struct Surface *read_surface_data(TerrainData *vertexData, TerrainData **vertexIndices, u32 dynamic) {
-    Vec3t v[3];
-    Vec3f n;
-    Vec3t offset;
-    s16 min, max;
+static void build_surface_tree(struct SurfaceIndex *index, struct SurfaceBatch *batch) {
+    u32 used = batch->count * sizeof(struct Surface);
+    for (u32 first = 0; first < batch->count;) {
+        u32 count = MIN(batch->count - first, 0x10000u);
+        u32 leaves = (count + SURFACES_PER_LEAF - 1) / SURFACES_PER_LEAF;
+        u32 nodes = 2 * leaves - 1;
+        struct SurfaceTree *tree = (struct SurfaceTree *)((u8 *)batch->surfaces + used);
+        u16 *indices = (u16 *)(tree->nodes + nodes);
+        used = ALIGN8(used + sizeof(*tree) + nodes * sizeof(*tree->nodes));
+        aggressf(used + count * sizeof(*indices) <= batch->capacity, "Collision tree exceeds surface pool");
 
-    vec3_scale_dest(offset, (*vertexIndices), 3);
+        tree->surfaces = batch->surfaces + first;
+        tree->numNodes = nodes;
+        for (u32 i = 0; i < count; i++) indices[i] = i;
+        build_node(tree, indices, 0, 0, count);
+        if (leaves > 1) reorder_surfaces(tree->surfaces, indices, count);
 
-    vec3s_copy(v[0], (vertexData + offset[0]));
-    vec3s_copy(v[1], (vertexData + offset[1]));
-    vec3s_copy(v[2], (vertexData + offset[2]));
-
-    find_vector_perpendicular_to_plane(n, v[0], v[1], v[2]);
-
-    f32 mag = (sqr(n[0]) + sqr(n[1]) + sqr(n[2]));
-    // This will never need to be run for custom levels because Fast64 does this step before exporting.
-    // assert(mag >= NEAR_ZERO, "Denorm tri was found.");
-#ifdef ENABLE_VANILLA_LEVEL_SPECIFIC_CHECKS
-    if (mag < NEAR_ZERO) {
-        return NULL;
+        tree->next = index->first;
+        index->first = tree;
+        index->numNodes += nodes;
+        first += count;
     }
-#endif
-    mag = 1.0f / sqrtf(mag);
-    vec3_scale(n, mag);
+    index->bytes += used;
+    index->numSurfaces += batch->count;
+}
 
-    struct Surface *surface = alloc_surface(dynamic);
+static struct SurfaceBatch start_static_batch(void) {
+    u32 capacity = main_pool_available() - 0x10;
+    struct SurfaceBatch batch = { main_pool_alloc(capacity, MEMORY_POOL_LEFT), 0, capacity };
+    return batch;
+}
 
-    vec3s_copy(surface->vertex1, v[0]);
-    vec3s_copy(surface->vertex2, v[1]);
-    vec3s_copy(surface->vertex3, v[2]);
+static void finish_static_batch(struct SurfaceBatch *batch) {
+    u32 previousBytes = gStaticSurfaceIndex.bytes;
+    build_surface_tree(&gStaticSurfaceIndex, batch);
+    main_pool_realloc(batch->surfaces, gStaticSurfaceIndex.bytes - previousBytes);
+}
 
-    surface->normal.x = n[0];
-    surface->normal.y = n[1];
-    surface->normal.z = n[2];
+static struct Surface *read_surface_data(struct SurfaceBatch *batch, TerrainData *vertexData, TerrainData *indices) {
+    TerrainData *a = vertexData + 3 * indices[0];
+    TerrainData *b = vertexData + 3 * indices[1];
+    TerrainData *c = vertexData + 3 * indices[2];
+    Vec3f ab, bc, normal;
+    vec3_diff(ab, b, a);
+    vec3_diff(bc, c, b);
+    vec3_cross(normal, ab, bc);
+    f32 lengthSq = vec3_sumsq(normal);
+    if (lengthSq == 0.0f) return NULL;
+    f32 invLength = 1.0f / sqrtf(lengthSq);
+    vec3_scale(normal, invLength);
 
-    surface->originOffset = -vec3_dot(n, v[0]);
-
-    min_max_3s(v[0][1], v[1][1], v[2][1], &min, &max);
-    surface->lowerY = (min - SURFACE_VERTICAL_BUFFER);
-    surface->upperY = (max + SURFACE_VERTICAL_BUFFER);
-
+    struct Surface *surface = &batch->surfaces[batch->count++];
+    vec3_copy(surface->vertex1, a);
+    vec3_copy(surface->vertex2, b);
+    vec3_copy(surface->vertex3, c);
+    surface->normal.x = normal[0];
+    surface->normal.y = normal[1];
+    surface->normal.z = normal[2];
+    surface->originOffset = -vec3_dot(normal, a);
+    surface->lowerY = min_3(a[1], b[1], c[1]);
+    surface->upperY = max_3(a[1], b[1], c[1]);
     return surface;
 }
 
@@ -330,49 +238,33 @@ static s32 surf_has_no_cam_collision(s32 surfaceType) {
  * Load in the surfaces for a given surface type. This includes setting the flags,
  * exertion, and room.
  */
-static void load_static_surfaces(TerrainData **data, TerrainData *vertexData, s32 surfaceType, RoomData **surfaceRooms) {
-    s32 i;
-    struct Surface *surface;
-    RoomData room = 0;
-#ifndef ALL_SURFACES_HAVE_FORCE
-    s16 hasForce = surface_has_force(surfaceType);
+static void load_surfaces(struct SurfaceBatch *batch, TerrainData **data, TerrainData *vertexData,
+                          s32 surfaceType, RoomData **rooms, s32 flags) {
+    s32 count = *(*data)++;
+#ifdef ALL_SURFACES_HAVE_FORCE
+    s32 hasForce = TRUE;
+#else
+    s32 hasForce = surface_has_force(surfaceType);
 #endif
-    s32 flags = surf_has_no_cam_collision(surfaceType);
-
-    s32 numSurfaces = *(*data)++;
-
-    for (i = 0; i < numSurfaces; i++) {
-        if (*surfaceRooms != NULL) {
-            room = *(*surfaceRooms)++;
-        }
-
-        surface = read_surface_data(vertexData, data, FALSE);
+    struct Object *object = rooms == NULL ? o : NULL;
+    // The DDD warp moves after loading and needs its destination room.
+    RoomData room = object && object->behavior == segmented_to_virtual(bhvDddWarp) ? 5 : 0;
+    flags |= surf_has_no_cam_collision(surfaceType);
+    if (SURFACE_IS_NEW_WATER(surfaceType) && !(flags & SURFACE_FLAG_DYNAMIC)) {
+        gStaticSurfaceIndex.hasWater = TRUE;
+    }
+    aggressf((batch->count + count) * sizeof(struct Surface) <= batch->capacity, "Collision surfaces exceed pool");
+    for (s32 i = 0; i < count; i++) {
+        struct Surface *surface = read_surface_data(batch, vertexData, *data);
+        if (rooms && *rooms) room = *(*rooms)++;
         if (surface != NULL) {
             surface->room = room;
             surface->type = surfaceType;
             surface->flags = flags;
-
-#ifdef ALL_SURFACES_HAVE_FORCE
-            surface->force = *(*data + 3);
-#else
-            if (hasForce) {
-                surface->force = *(*data + 3);
-            } else {
-                surface->force = 0;
-            }
-#endif
-
-            add_surface(surface, FALSE);
+            surface->object = object;
+            surface->force = hasForce ? (*data)[3] : 0;
         }
-
-#ifdef ALL_SURFACES_HAVE_FORCE
-        *data += 4;
-#else
-        *data += 3;
-        if (hasForce) {
-            (*data)++;
-        }
-#endif
+        *data += 3 + hasForce;
     }
 }
 
@@ -407,8 +299,7 @@ static void load_environmental_regions(TerrainData **data) {
  * Allocate the dynamic surface pool for object collision.
  */
 void alloc_surface_pools(void) {
-    gDynamicSurfacePool = main_pool_alloc(DYNAMIC_SURFACE_POOL_SIZE, MEMORY_POOL_LEFT);
-    gDynamicSurfacePoolEnd = gDynamicSurfacePool;
+    sDynamicSurfacePool = main_pool_alloc(DYNAMIC_SURFACE_POOL_SIZE, MEMORY_POOL_LEFT);
 
     gCCMEnteredSlide = FALSE;
     reset_red_coins_collected();
@@ -479,23 +370,12 @@ void load_area_terrain(s32 index, TerrainData *data, RoomData *surfaceRooms, s16
     PUPPYPRINT_GET_SNAPSHOT();
     s32 terrainLoadType;
     TerrainData *vertexData = NULL;
-    u32 surfacePoolData;
-
-    // Initialize the data for this.
     gEnvironmentRegions = NULL;
-    gSurfaceNodesAllocated = 0;
-    gSurfacesAllocated = 0;
-    bzero(&sCellsUsed, sizeof(sCellsUsed));
-    sNumCellsUsed = 0;
-    sClearAllCells = TRUE;
+    gStaticSurfaceIndex = (struct SurfaceIndex){ 0 };
+    gDynamicSurfaceIndex = (struct SurfaceIndex){ 0 };
+    if (data == NULL) return;
 
-    // Clear the static (level) surface partitions for new use.
-    bzero(gStaticSurfacePartition, sizeof(gStaticSurfacePartition));
-    gTotalStaticSurfaceData = 0;
-
-    // Initialise a new surface pool for this block of static surface data
-    gCurrStaticSurfacePool = main_pool_alloc(main_pool_available() - 0x10, MEMORY_POOL_LEFT);
-    gCurrStaticSurfacePoolEnd = gCurrStaticSurfacePool;
+    struct SurfaceBatch batch = start_static_batch();
 
     // A while loop iterating through each section of the level data. Sections of data
     // are prefixed by a terrain "type." This type is reused for surfaces as the surface
@@ -503,23 +383,19 @@ void load_area_terrain(s32 index, TerrainData *data, RoomData *surfaceRooms, s16
     while (TRUE) {
         terrainLoadType = *data++;
 
-        if (TERRAIN_LOAD_IS_SURFACE_TYPE_LOW(terrainLoadType)) {
-            load_static_surfaces(&data, vertexData, terrainLoadType, &surfaceRooms);
+        if (TERRAIN_LOAD_IS_SURFACE_TYPE_LOW(terrainLoadType) || TERRAIN_LOAD_IS_SURFACE_TYPE_HIGH(terrainLoadType)) {
+            load_surfaces(&batch, &data, vertexData, terrainLoadType, &surfaceRooms, 0);
         } else if (terrainLoadType == TERRAIN_LOAD_VERTICES) {
             vertexData = read_vertex_data(&data);
         } else if (terrainLoadType == TERRAIN_LOAD_OBJECTS) {
             spawn_special_objects(index, &data);
         } else if (terrainLoadType == TERRAIN_LOAD_ENVIRONMENT) {
             load_environmental_regions(&data);
-        } else if (terrainLoadType == TERRAIN_LOAD_CONTINUE) {
-            continue;
         } else if (terrainLoadType == TERRAIN_LOAD_END) {
             break;
-        } else if (TERRAIN_LOAD_IS_SURFACE_TYPE_HIGH(terrainLoadType)) {
-            load_static_surfaces(&data, vertexData, terrainLoadType, &surfaceRooms);
-            continue;
         }
     }
+    finish_static_batch(&batch);
 
     if (macroObjects != NULL && *macroObjects != -1) {
         // If the first macro object presetID is within the range [0, 29].
@@ -533,35 +409,14 @@ void load_area_terrain(s32 index, TerrainData *data, RoomData *surfaceRooms, s16
         }
     }
 
-    surfacePoolData = (uintptr_t)gCurrStaticSurfacePoolEnd - (uintptr_t)gCurrStaticSurfacePool;
-    gTotalStaticSurfaceData += surfacePoolData;
-    main_pool_realloc(gCurrStaticSurfacePool, surfacePoolData);
-
-    gNumStaticSurfaceNodes = gSurfaceNodesAllocated;
-    gNumStaticSurfaces = gSurfacesAllocated;
     profiler_collision_update(first);
 }
 
-/**
- * If not in time stop, clear the surface partitions.
- */
 void clear_dynamic_surfaces(void) {
     PUPPYPRINT_GET_SNAPSHOT();
     if (!(gTimeStopState & TIME_STOP_ACTIVE)) {
         clear_dynamic_surface_references();
-
-        gSurfacesAllocated = gNumStaticSurfaces;
-        gSurfaceNodesAllocated = gNumStaticSurfaceNodes;
-        gDynamicSurfacePoolEnd = gDynamicSurfacePool;
-        if (sClearAllCells) {
-            bzero(gDynamicSurfacePartition, sizeof(gDynamicSurfacePartition));
-        } else {
-            for (u32 i = 0; i < sNumCellsUsed; i++) {
-                gDynamicSurfacePartition[sCellsUsed[i].z][sCellsUsed[i].x][sCellsUsed[i].partition] = NULL;
-            }
-        }
-        sNumCellsUsed = 0;
-        sClearAllCells = FALSE;
+        gDynamicSurfaceIndex = (struct SurfaceIndex){ 0 };
     }
     profiler_collision_update(first);
 }
@@ -599,59 +454,6 @@ void transform_object_vertices(TerrainData **data, TerrainData *vertexData) {
     *data = vertices;
 }
 
-/**
- * Load in the surfaces for the o. This includes setting the flags, exertion, and room.
- */
-void load_object_surfaces(TerrainData **data, TerrainData *vertexData, u32 dynamic) {
-    s32 i;
-
-    s32 surfaceType = *(*data)++;
-    s32 numSurfaces = *(*data)++;
-
-#ifndef ALL_SURFACES_HAVE_FORCE
-    TerrainData hasForce = surface_has_force(surfaceType);
-#endif
-
-    s32 flags = surf_has_no_cam_collision(surfaceType) | (dynamic ? SURFACE_FLAG_DYNAMIC : 0);
-
-    // The DDD warp is initially loaded at the origin and moved to the proper
-    // position in paintings.c and doesn't update its room, so set it here.
-    RoomData room = (o->behavior == segmented_to_virtual(bhvDddWarp)) ? 5 : 0;
-
-    for (i = 0; i < numSurfaces; i++) {
-        struct Surface *surface = read_surface_data(vertexData, data, dynamic);
-
-        if (surface != NULL) {
-            surface->object = o;
-            surface->type = surfaceType;
-
-#ifdef ALL_SURFACES_HAVE_FORCE
-            surface->force = *(*data + 3);
-#else
-            if (hasForce) {
-                surface->force = *(*data + 3);
-            } else {
-                surface->force = 0;
-            }
-#endif
-
-            surface->flags |= flags;
-            surface->room = room;
-            add_surface(surface, dynamic);
-        }
-
-#ifdef ALL_SURFACES_HAVE_FORCE
-        *data += 4;
-#else
-        if (hasForce) {
-            *data += 4;
-        } else {
-            *data += 3;
-        }
-#endif
-    }
-}
-
 #ifdef AUTO_COLLISION_DISTANCE
 static void get_optimal_coll_dist(struct Object *obj) {
     register f32 thisVertDist, maxDist = 0.0f;
@@ -671,15 +473,21 @@ static void get_optimal_coll_dist(struct Object *obj) {
 }
 #endif
 
-static TerrainData sVertexData[600];
+static void load_object_tree(struct SurfaceBatch *batch, s32 flags) {
+    static TerrainData vertexData[600];
+    TerrainData *data = o->collisionData + 1;
+    transform_object_vertices(&data, vertexData);
+    while (*data != TERRAIN_LOAD_CONTINUE) {
+        s32 type = *data++;
+        load_surfaces(batch, &data, vertexData, type, NULL, flags);
+    }
+}
 
 /**
  * Transform an object's vertices, reload them, and render the object.
  */
 void load_object_collision_model(void) {
     PUPPYPRINT_GET_SNAPSHOT();
-    TerrainData *collisionData = o->collisionData;
-
     Vec3f dist;
     vec3_diff(dist, &o->oPosVec, &gMarioObject->oPosVec);
     f32 sqrLateralDist = sqr(dist[0]) + sqr(dist[2]);
@@ -710,13 +518,12 @@ void load_object_collision_model(void) {
         && inColRadius
         && !(o->activeFlags & ACTIVE_FLAG_IN_DIFFERENT_ROOM)
     ) {
-        collisionData++;
-        transform_object_vertices(&collisionData, sVertexData);
-
-        // TERRAIN_LOAD_CONTINUE acts as an "end" to the terrain data.
-        while (*collisionData != TERRAIN_LOAD_CONTINUE) {
-            load_object_surfaces(&collisionData, sVertexData, TRUE);
-        }
+        struct SurfaceBatch batch = {
+            (struct Surface *)(sDynamicSurfacePool + gDynamicSurfaceIndex.bytes), 0,
+            DYNAMIC_SURFACE_POOL_SIZE - gDynamicSurfaceIndex.bytes
+        };
+        load_object_tree(&batch, SURFACE_FLAG_DYNAMIC);
+        build_surface_tree(&gDynamicSurfaceIndex, &batch);
     }
 
     f32 marioDist = o->oDistanceToMario;
@@ -736,28 +543,8 @@ void load_object_collision_model(void) {
  */
 void load_object_static_model(void) {
     PUPPYPRINT_GET_SNAPSHOT();
-    TerrainData *collisionData = o->collisionData;
-    u32 surfacePoolData;
-
-    // Initialise a new surface pool for this block of surface data
-    gCurrStaticSurfacePool = main_pool_alloc(main_pool_available() - 0x10, MEMORY_POOL_LEFT);
-    gCurrStaticSurfacePoolEnd = gCurrStaticSurfacePool;
-    gSurfaceNodesAllocated = gNumStaticSurfaceNodes;
-    gSurfacesAllocated = gNumStaticSurfaces;
-
-    collisionData++;
-    transform_object_vertices(&collisionData, sVertexData);
-
-    // TERRAIN_LOAD_CONTINUE acts as an "end" to the terrain data.
-    while (*collisionData != TERRAIN_LOAD_CONTINUE) {
-        load_object_surfaces(&collisionData, sVertexData, FALSE);
-    }
-
-    surfacePoolData = (uintptr_t)gCurrStaticSurfacePoolEnd - (uintptr_t)gCurrStaticSurfacePool;
-    gTotalStaticSurfaceData += surfacePoolData;
-    main_pool_realloc(gCurrStaticSurfacePool, surfacePoolData);
-
-    gNumStaticSurfaceNodes = gSurfaceNodesAllocated;
-    gNumStaticSurfaces = gSurfacesAllocated;
+    struct SurfaceBatch batch = start_static_batch();
+    load_object_tree(&batch, 0);
+    finish_static_batch(&batch);
     profiler_collision_update(first);
 }

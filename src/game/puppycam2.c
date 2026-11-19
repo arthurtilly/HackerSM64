@@ -12,7 +12,6 @@
 #include "engine/math_util.h"
 #include "print.h"
 #include "engine/surface_collision.h"
-#include "engine/surface_load.h"
 #include "include/text_strings.h"
 #include "segment2.h"
 #include "ingame_menu.h"
@@ -956,7 +955,8 @@ void puppycam_terrain_angle(void) {
     s16 floorPitch;
     s32 gotTheOkay = FALSE;
 
-    if (gMarioState->action & ACT_FLAG_SWIMMING || !(gPuppyCam.flags & PUPPYCAM_BEHAVIOUR_HEIGHT_HELPER)) {
+    if (gMarioState->floor == NULL || (gMarioState->action & ACT_FLAG_SWIMMING)
+        || !(gPuppyCam.flags & PUPPYCAM_BEHAVIOUR_HEIGHT_HELPER)) {
         gPuppyCam.intendedTerrainPitch = 0;
         adjustSpeed = 0.25f;
         farFromSurface = TRUE;
@@ -1052,24 +1052,15 @@ static s32 puppycam_check_volume_bounds(struct sPuppyVolume *volume, s32 index) 
 
 // Handles wall adjustment when wall kicking.
 void puppycam_wall_angle(void) {
-    struct Surface *wall;
-    struct WallCollisionData cData;
+    struct SurfaceContact wall;
+    Vec3f pos;
 
     if (!(gMarioState->action & ACT_WALL_KICK_AIR) || ((gMarioState->action & ACT_FLAG_AIR) && ABS(gMarioState->forwardVel) < 16.0f) || !(gMarioState->action & ACT_FLAG_AIR)) {
         return;
     }
-    cData.x = gPuppyCam.targetObj->oPosX;
-    cData.y = gPuppyCam.targetObj->oPosY;
-    cData.z = gPuppyCam.targetObj->oPosZ;
-    cData.radius = 150.0f;
-    cData.offsetY = 0;
-
-    if (find_wall_collisions(&cData)) {
-        wall = cData.walls[cData.numWalls - 1];
-    } else {
-        return;
-    }
-    s16 wallYaw = atan2s(wall->normal.z, wall->normal.x) + 0x4000;
+    vec3_copy(pos, &gPuppyCam.targetObj->oPosVec);
+    if (!resolve_wall_sphere(pos, gVec3fY, 0.0f, 150.0f, WALL_KICK_MAX_UP, &wall)) return;
+    s16 wallYaw = SURFACE_YAW(&wall) + 0x4000;
 
     wallYaw -= gPuppyCam.yawTarget;
     if (wallYaw % 0x4000) {
@@ -1186,9 +1177,9 @@ void puppycam_projection_behaviours(void) {
 
 #ifdef ENABLE_VANILLA_LEVEL_SPECIFIC_CHECKS
  #ifdef UNLOCK_ALL
-    if (gMarioState->floor != NULL && gMarioState->floor->type == SURFACE_LOOK_UP_WARP) {
+    if (gMarioState->floorType == SURFACE_LOOK_UP_WARP) {
  #else // !UNLOCK_ALL
-    if (gMarioState->floor != NULL && gMarioState->floor->type == SURFACE_LOOK_UP_WARP
+    if (gMarioState->floorType == SURFACE_LOOK_UP_WARP
         && save_file_get_total_star_count(gCurrSaveFileNum - 1, COURSE_MIN - 1, COURSE_MAX - 1) >= 10) {
  #endif // !UNLOCK_ALL
         if (gPuppyCam.pitchTarget >= 0x7000) {
@@ -1354,10 +1345,7 @@ static void puppycam_collision(void) {
         return;
     }
 
-    struct Surface *surf[2] = {NULL, NULL};
-
     Vec3f dirToCam;
-    Vec3f hitpos[2];
     Vec3f target[2];
     f32 dist[2] = {0};
     // the distance from surface the camera should be. note: should NOT be greater than ~50 due to mario's hitbox
@@ -1373,19 +1361,16 @@ static void puppycam_collision(void) {
     // Get the direction from mario's head to the camera
     vec3_diff(dirToCam, gPuppyCam.pos, target[0]);
     vec3f_normalize(dirToCam);
-    // Get the vector from mario's head to the camera plus the extra check dist
-    Vec3f vecToCam;
-    vec3_scale_dest(vecToCam, dirToCam, colCheckDist);
-
-    dist[0] = find_surface_on_ray(target[0], vecToCam, &surf[0], hitpos[0], RAYCAST_FIND_FLOOR | RAYCAST_FIND_CEIL | RAYCAST_FIND_WALL);
-    dist[1] = find_surface_on_ray(target[1], vecToCam, &surf[1], hitpos[1], RAYCAST_FIND_FLOOR | RAYCAST_FIND_CEIL | RAYCAST_FIND_WALL);
+    for (s32 i = 0; i < 2; i++) {
+        dist[i] = collision_raycast(target[i], dirToCam, colCheckDist, 0.0f, COLLISION_FLAG_CAMERA, NULL);
+    }
 
     // set collision distance to the current distance from mario to cam
     gPuppyCam.collisionDistance = colCheckDist;
 
-    if (surf[0] || surf[1]) {
-        // use the further distance between the two surfaces to be less aggressive
-        f32 closestDist = MAX(dist[0], dist[1]);
+    if (dist[0] >= 0.0f || dist[1] >= 0.0f) {
+        // A clear ray can stay at the requested camera distance.
+        f32 closestDist = (dist[0] < 0.0f || dist[1] < 0.0f) ? colCheckDist : MAX(dist[0], dist[1]);
         // Cap it at the zoom dist so it doesn't go further than necessary
         closestDist = MIN(closestDist, gPuppyCam.zoom);
         if (closestDist - surfOffset <= gPuppyCam.zoom) {
@@ -1462,11 +1447,9 @@ static void puppycam_apply(void) {
         gPuppyCam.targetObj2 = NULL;
     }*/
 
-    if (gMarioState->floor != NULL) {
-        sMarioGeometry.currFloor       = gMarioState->floor;
-        sMarioGeometry.currFloorHeight = gMarioState->floorHeight;
-        sMarioGeometry.currFloorType   = gMarioState->floor->type;
-    }
+    sMarioGeometry.currFloor       = gMarioState->floor;
+    sMarioGeometry.currFloorHeight = gMarioState->floorHeight;
+    sMarioGeometry.currFloorType   = gMarioState->floorType;
 
     if (gMarioState->ceil != NULL) {
         sMarioGeometry.currCeil        = gMarioState->ceil;

@@ -6,9 +6,6 @@
 static s16 sYoshiHomeLocations[] = { 0, -5625, -1364, -5912, -1403, -4609, -1004, -5308 };
 
 void bhv_yoshi_init(void) {
-    o->oGravity = 2.0f;
-    o->oFriction = 0.9f;
-    o->oBuoyancy = 1.3f;
     o->oInteractionSubtype = INT_SUBTYPE_NPC;
 
 #if !defined(ENABLE_VANILLA_LEVEL_SPECIFIC_CHECKS) || defined(UNLOCK_ALL)
@@ -25,7 +22,8 @@ void yoshi_walk_loop(void) {
     s16 animFrame = o->header.gfx.animInfo.animFrame;
 
     o->oForwardVel = 10.0f;
-    object_step();
+    cur_obj_update_floor_and_walls();
+    cur_obj_move_standard(60);
     o->oMoveAngleYaw = approach_s16_symmetric(o->oMoveAngleYaw, o->oYoshiTargetYaw, 0x500);
 
     if (is_point_close_to_object(o, o->oHomeX, 3174.0f, o->oHomeZ, 200)) {
@@ -105,7 +103,8 @@ void yoshi_walk_and_jump_off_roof_loop(void) {
     s16 animFrame = o->header.gfx.animInfo.animFrame;
 
     o->oForwardVel = 10.0f;
-    object_step();
+    cur_obj_update_floor_and_walls();
+    cur_obj_move_standard(60);
     cur_obj_init_animation(1);
 
     if (o->oTimer == 0) {

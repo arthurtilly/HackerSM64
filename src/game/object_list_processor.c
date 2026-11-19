@@ -119,27 +119,6 @@ const BehaviorScript *gCurBhvCommand;
 s16 gPrevFrameObjectCount;
 
 /**
- * The total number of surface nodes allocated (a node is allocated for each
- * spatial partition cell that a surface intersects).
- */
-s32 gSurfaceNodesAllocated;
-
-/**
- * The total number of surfaces allocated.
- */
-s32 gSurfacesAllocated;
-
-/**
- * The number of nodes that have been created for surfaces.
- */
-s32 gNumStaticSurfaceNodes;
-
-/**
- * The number of surfaces in the pool.
- */
-s32 gNumStaticSurfaces;
-
-/**
  * A pool used by chain chomp and wiggler to allocate their body parts.
  */
 struct MemoryPool *gObjectMemoryPool;
@@ -549,9 +528,6 @@ void update_terrain_objects(void) {
 #endif
     gObjectCounter += update_objects_in_list(&gObjectLists[OBJ_LIST_SURFACE]);
     profiler_update(PROFILER_TIME_DYNAMIC, profiler_get_delta(PROFILER_DELTA_COLLISION) - first);
-
-    // If the dynamic surface pool has overflowed, throw an error.
-    assertf((uintptr_t)gDynamicSurfacePoolEnd <= (uintptr_t)gDynamicSurfacePool + DYNAMIC_SURFACE_POOL_SIZE, "Dynamic surface pool size exceeded!");
 }
 
 /**

@@ -23,9 +23,6 @@ static struct ObjectHitbox sAmpHitbox = {
  */
 void bhv_homing_amp_init(void) {
     vec3f_copy(&o->oHomeVec, &o->oPosVec);
-    o->oGravity = 0.0f;
-    o->oFriction = 1.0f;
-    o->oBuoyancy = 1.0f;
     o->oHomingAmpAvgY = o->oHomeY;
 
     // Homing amps start at 1/10th their normal size.
@@ -100,9 +97,9 @@ static void homing_amp_chase_loop(void) {
     }
 
     // If the amp is locked on to Mario, start "chasing" him by moving
-    // in a straight line at 15 units/second for 32 frames.
+    // in a straight line for 32 frames.
     if (o->oHomingAmpLockedOn == TRUE) {
-        o->oForwardVel = 15.0f;
+        o->oForwardVel = 30.0f;
 
         // Move the amp's average Y (the Y value it oscillates around) to align with
         // Mario's head. Mario's graphics' Y + 150 is around the top of his head.
@@ -118,9 +115,9 @@ static void homing_amp_chase_loop(void) {
             o->oHomingAmpLockedOn = FALSE;
         }
     } else {
-        // If the amp is not locked on to Mario, move forward at 10 units/second
+        // If the amp is not locked on to Mario, move forward more slowly
         // while curving towards him.
-        o->oForwardVel = 10.0f;
+        o->oForwardVel = 20.0f;
 
         obj_turn_toward_object(o, gMarioObject, O_MOVE_ANGLE_YAW_INDEX, 0x400);
 
@@ -149,7 +146,7 @@ static void homing_amp_chase_loop(void) {
  */
 static void homing_amp_give_up_loop(void) {
     // Move forward for 152 frames
-    o->oForwardVel = 15.0f;
+    o->oForwardVel = 30.0f;
 
     if (o->oTimer > 150) {
         // Hide the amp and reset it back to its inactive state
@@ -214,7 +211,8 @@ void bhv_homing_amp_loop(void) {
             break;
     }
 
-    object_step();
+    cur_obj_update_floor_and_walls();
+    cur_obj_move_standard(60);
 
     // Oscillate
     o->oAmpYPhase++;

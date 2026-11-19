@@ -192,51 +192,34 @@ void debug_box_input(void) {
     }
 }
 
-s16 gVisualSurfaceCount;
-s32 gVisualOffset;
-extern s32 gSurfaceNodesAllocated;
-extern s32 gSurfacesAllocated;
+static s32 gVisualSurfaceCount;
+static s32 gVisualOffset;
 
-void iterate_surfaces_visual(s32 x, s32 z, Vtx *verts) {
-    struct SurfaceNode *node;
-    struct Surface *surf;
-    s32 i = 0;
-    ColorRGB col = COLOR_RGB_RED;
-
-    if (is_outside_level_bounds(x, z)) return;
-
-    s32 cellX = GET_CELL_COORD(x);
-    s32 cellZ = GET_CELL_COORD(z);
-
-    for (i = 0; i < (2 * NUM_SPATIAL_PARTITIONS); i++) {
-        switch (i) {
-            case 0: node = gDynamicSurfacePartition[cellZ][cellX][SPATIAL_PARTITION_WALLS ]; colorRGB_copy(col, (ColorRGB)COLOR_RGB_GREEN ); break;
-            case 1: node =  gStaticSurfacePartition[cellZ][cellX][SPATIAL_PARTITION_WALLS ]; colorRGB_copy(col, (ColorRGB)COLOR_RGB_GREEN ); break;
-            case 2: node = gDynamicSurfacePartition[cellZ][cellX][SPATIAL_PARTITION_FLOORS]; colorRGB_copy(col, (ColorRGB)COLOR_RGB_BLUE  ); break;
-            case 3: node =  gStaticSurfacePartition[cellZ][cellX][SPATIAL_PARTITION_FLOORS]; colorRGB_copy(col, (ColorRGB)COLOR_RGB_BLUE  ); break;
-            case 4: node = gDynamicSurfacePartition[cellZ][cellX][SPATIAL_PARTITION_CEILS ]; colorRGB_copy(col, (ColorRGB)COLOR_RGB_RED   ); break;
-            case 5: node =  gStaticSurfacePartition[cellZ][cellX][SPATIAL_PARTITION_CEILS ]; colorRGB_copy(col, (ColorRGB)COLOR_RGB_RED   ); break;
-            case 6: node = gDynamicSurfacePartition[cellZ][cellX][SPATIAL_PARTITION_WATER ]; colorRGB_copy(col, (ColorRGB)COLOR_RGB_YELLOW); break;
-            case 7: node =  gStaticSurfacePartition[cellZ][cellX][SPATIAL_PARTITION_WATER ]; colorRGB_copy(col, (ColorRGB)COLOR_RGB_YELLOW); break;
-        }
-
-        while (node != NULL) {
-            surf = node->surface;
-            node = node->next;
-
-            if (SURFACE_IS_INSTANT_WARP(surf->type)) {
-                make_vertex(verts, (gVisualSurfaceCount + 0), surf->vertex1[0], surf->vertex1[1], surf->vertex1[2], 0, 0, 0xFF, 0xA0, 0x00, 0x80);
-                make_vertex(verts, (gVisualSurfaceCount + 1), surf->vertex2[0], surf->vertex2[1], surf->vertex2[2], 0, 0, 0xFF, 0xA0, 0x00, 0x80);
-                make_vertex(verts, (gVisualSurfaceCount + 2), surf->vertex3[0], surf->vertex3[1], surf->vertex3[2], 0, 0, 0xFF, 0xA0, 0x00, 0x80);
-            } else {
-                make_vertex(verts, (gVisualSurfaceCount + 0), surf->vertex1[0], surf->vertex1[1], surf->vertex1[2], 0, 0, col[0], col[1], col[2], 0x80);
-                make_vertex(verts, (gVisualSurfaceCount + 1), surf->vertex2[0], surf->vertex2[1], surf->vertex2[2], 0, 0, col[0], col[1], col[2], 0x80);
-                make_vertex(verts, (gVisualSurfaceCount + 2), surf->vertex3[0], surf->vertex3[1], surf->vertex3[2], 0, 0, col[0], col[1], col[2], 0x80);
+static s32 visual_surface_vertices(const struct SurfaceBounds *bounds, Vtx *verts) {
+    s32 count = 0;
+    for (s32 dynamic = 0; dynamic <= 1; dynamic++) {
+        struct SurfaceIterator it = { .tree = dynamic ? gDynamicSurfaceIndex.first : gStaticSurfaceIndex.first };
+        struct Surface *surf;
+        while ((surf = next_surface(&it, bounds)) != NULL) {
+            if (verts != NULL) {
+                ColorRGB col = COLOR_RGB_GREEN;
+                if (SURFACE_IS_INSTANT_WARP(surf->type)) {
+                    vec3_set(col, 0xFF, 0xA0, 0x00);
+                } else if (SURFACE_IS_NEW_WATER(surf->type)) {
+                    colorRGB_copy(col, (ColorRGB)COLOR_RGB_YELLOW);
+                } else if (surf->normal.y > WALL_MAX_UP) {
+                    colorRGB_copy(col, (ColorRGB)COLOR_RGB_BLUE);
+                } else if (surf->normal.y < -WALL_MAX_UP) {
+                    colorRGB_copy(col, (ColorRGB)COLOR_RGB_RED);
+                }
+                make_vertex(verts, count,     surf->vertex1[0], surf->vertex1[1], surf->vertex1[2], 0, 0, col[0], col[1], col[2], 0x80);
+                make_vertex(verts, count + 1, surf->vertex2[0], surf->vertex2[1], surf->vertex2[2], 0, 0, col[0], col[1], col[2], 0x80);
+                make_vertex(verts, count + 2, surf->vertex3[0], surf->vertex3[1], surf->vertex3[2], 0, 0, col[0], col[1], col[2], 0x80);
             }
-
-            gVisualSurfaceCount += 3;
+            count += 3;
         }
     }
+    return count;
 }
 
 void iterate_surfaces_envbox(Vtx *verts) {
@@ -278,7 +261,7 @@ void visual_surface_display(Gfx **gfx, Vtx *verts, s32 iteration) {
             ntx = MIN(VERTCOUNT, vts);
             gSPVertex((*gfx)++, VIRTUAL_TO_PHYSICAL(verts + (gVisualSurfaceCount - vts)), ntx, 0);
             count = 0;
-            vtl   = VERTCOUNT;
+            vtl   = ntx;
         }
 
         if (vtl >= 6) {
@@ -304,62 +287,22 @@ void visual_surface_display(Gfx **gfx, Vtx *verts, s32 iteration) {
     gDisplayListHead = tempGfxHead;
 }
 
-s32 iterate_surface_count(s32 x, s32 z) {
-    struct SurfaceNode *node;
-    s32 i = 0;
-    s32 j = 0;
-    TerrainData *p = gEnvironmentRegions;
-    s32 numRegions;
-
-    if (is_outside_level_bounds(x, z)) return 0;
-
-    s32 cellX = GET_CELL_COORD(x);
-    s32 cellZ = GET_CELL_COORD(z);
-
-    for (i = 0; i < (2 * NUM_SPATIAL_PARTITIONS); i++) {
-        switch (i) {
-            case 0: node = gDynamicSurfacePartition[cellZ][cellX][SPATIAL_PARTITION_WALLS ]; break;
-            case 1: node =  gStaticSurfacePartition[cellZ][cellX][SPATIAL_PARTITION_WALLS ]; break;
-            case 2: node = gDynamicSurfacePartition[cellZ][cellX][SPATIAL_PARTITION_FLOORS]; break;
-            case 3: node =  gStaticSurfacePartition[cellZ][cellX][SPATIAL_PARTITION_FLOORS]; break;
-            case 4: node = gDynamicSurfacePartition[cellZ][cellX][SPATIAL_PARTITION_CEILS ]; break;
-            case 5: node =  gStaticSurfacePartition[cellZ][cellX][SPATIAL_PARTITION_CEILS ]; break;
-            case 6: node = gDynamicSurfacePartition[cellZ][cellX][SPATIAL_PARTITION_WATER ]; break;
-            case 7: node =  gStaticSurfacePartition[cellZ][cellX][SPATIAL_PARTITION_WATER ]; break;
-        }
-
-        while (node != NULL) {
-            node = node->next;
-            j++;
-        }
-    }
-    if (p != NULL) {
-        numRegions = *p++;
-        j += (numRegions * 6);
-    }
-
-    return j;
-}
-
 void visual_surface_loop(Gfx **gfx) {
-    if (!gSurfaceNodesAllocated
-     || !gSurfacesAllocated
-     || !gMarioState->marioObj) {
-        return;
+    if (!gMarioState->marioObj || is_outside_level_bounds((s32)gMarioState->pos[0], (s32)gMarioState->pos[2])) return;
+    struct SurfaceBounds bounds;
+    for (s32 i = 0; i < 3; i++) {
+        bounds.min[i] = gMarioState->pos[i] - 512;
+        bounds.max[i] = gMarioState->pos[i] + 512;
     }
-    Vtx *verts = alloc_display_list((iterate_surface_count(gMarioState->pos[0], gMarioState->pos[2]) * 3) * sizeof(Vtx));
-
-    gVisualSurfaceCount = 0;
-    gVisualOffset       = 0;
-
-    if (verts == NULL) {
-        return;
-    }
+    s32 count = visual_surface_vertices(&bounds, NULL);
+    if (gEnvironmentRegions) count += 6 * gEnvironmentRegions[0];
+    if (count == 0) return;
+    Vtx *verts = alloc_display_list(count * sizeof(Vtx));
+    if (verts == NULL) return;
 
     gSPDisplayList((*gfx)++, dl_visual_surface);
-
-    iterate_surfaces_visual(gMarioState->pos[0], gMarioState->pos[2], verts);
-
+    gVisualOffset = 0;
+    gVisualSurfaceCount = visual_surface_vertices(&bounds, verts);
     visual_surface_display(gfx, verts, 0);
 
     gDPPipeSync((*gfx)++);

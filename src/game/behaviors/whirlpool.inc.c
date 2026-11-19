@@ -28,10 +28,12 @@ void whirpool_orient_graph(void) {
     f32 sinPitch = sins(o->oFaceAnglePitch);
     f32 cosRoll = coss(o->oFaceAngleRoll);
     f32 sinRoll = sins(o->oFaceAngleRoll);
-    f32 normalX = sinRoll * cosPitch;
-    f32 normalY = cosPitch * cosRoll;
-    f32 normalZ = sinPitch;
-    obj_orient_graph(o, normalX, normalY, normalZ);
+    Vec3f normal = { sinRoll * cosPitch, cosPitch * cosRoll, sinPitch };
+    Vec3f position;
+
+    vec3f_copy_y_off(position, &o->oPosVec, o->oGraphYOffset);
+    mtxf_align_terrain_normal(o->transform, normal, position, o->oFaceAngleYaw);
+    o->header.gfx.throwMatrix = &o->transform;
 }
 
 void bhv_whirlpool_loop(void) {

@@ -39,12 +39,6 @@ static Trajectory sThiTinyMetalBallTraj[] = {
     TRAJECTORY_END(),
 };
 
-void bhv_bowling_ball_init(void) {
-    o->oGravity = 5.5f;
-    o->oFriction = 1.0f;
-    o->oBuoyancy = 2.0f;
-}
-
 void bowling_ball_set_hitbox(void) {
     obj_set_hitbox(o, &sBowlingBallHitbox);
 
@@ -79,7 +73,7 @@ void bowling_ball_set_waypoints(void) {
 
 void bhv_bowling_ball_roll_loop(void) {
     bowling_ball_set_waypoints();
-    s16 collisionFlags = object_step();
+    cur_obj_move_rolling();
 
     s32 followStatus = cur_obj_follow_path();
 
@@ -100,7 +94,7 @@ void bhv_bowling_ball_roll_loop(void) {
         o->activeFlags = ACTIVE_FLAG_DEACTIVATED;
     }
 
-    if ((collisionFlags & OBJ_COL_FLAG_GROUNDED) && (o->oVelY > 5.0f)) {
+    if (o->oMoveFlags & OBJ_MOVE_BOUNCE) {
         cur_obj_play_sound_2(SOUND_GENERAL_QUIET_POUND1_LOWPRIO);
     }
 }
@@ -132,6 +126,7 @@ void bhv_bowling_ball_initialize_loop(void) {
         case BBALL_BP_STYPE_THI_SMALL:
             o->oForwardVel = 10.0f;
             cur_obj_scale(0.3f);
+            o->oWallHitboxRadius = 30.0f;
             o->oGraphYOffset = 39.0f;
             break;
     }
@@ -213,14 +208,8 @@ void bhv_thi_bowling_ball_spawner_loop(void) {
     }
 }
 
-void bhv_bob_pit_bowling_ball_init(void) {
-    o->oGravity = 12.0f;
-    o->oFriction = 1.0f;
-    o->oBuoyancy = 2.0f;
-}
-
 void bhv_bob_pit_bowling_ball_loop(void) {
-    object_step();
+    cur_obj_move_rolling();
 
     if ((o->oFloor != NULL) && (o->oFloor->normal.x == 0) && (o->oFloor->normal.z == 0)) {
         o->oForwardVel = 28.0f;
@@ -231,17 +220,8 @@ void bhv_bob_pit_bowling_ball_loop(void) {
     set_object_visibility(o, 3000);
 }
 
-void bhv_free_bowling_ball_init(void) {
-    o->oGravity = 5.5f;
-    o->oFriction = 1.0f;
-    o->oBuoyancy = 2.0f;
-    vec3f_copy(&o->oHomeVec, &o->oPosVec);
-    o->oForwardVel = 0;
-    o->oMoveAngleYaw = 0;
-}
-
 void bhv_free_bowling_ball_roll_loop(void) {
-    object_step();
+    cur_obj_move_rolling();
 
     bowling_ball_set_hitbox();
 
@@ -250,23 +230,18 @@ void bhv_free_bowling_ball_roll_loop(void) {
         cur_obj_play_sound_1(SOUND_ENV_BOWLING_BALL_ROLL);
     }
 
-    /* Always false, commented out to suppress compiler warnings. */
-    // if ((collisionFlags & OBJ_COL_FLAG_GROUNDED) && !(collisionFlags & OBJ_COL_FLAGS_LANDED)) {
-    //     cur_obj_play_sound_2(SOUND_GENERAL_QUIET_POUND1_LOWPRIO);
-    // }
-
     if (!is_point_within_radius_of_mario(o->oPosX, o->oPosY, o->oPosZ, 6000)) {
         o->header.gfx.node.flags |= GRAPH_RENDER_INVISIBLE;
         cur_obj_become_intangible();
         vec3f_copy(&o->oPosVec, &o->oHomeVec);
-        bhv_free_bowling_ball_init();
+        o->oForwardVel = 0.0f;
+        o->oVelY = 0.0f;
+        o->oMoveAngleYaw = 0;
         o->oAction = FREE_BBALL_ACT_RESET;
     }
 }
 
 void bhv_free_bowling_ball_loop(void) {
-    o->oGravity = 5.5f;
-
     switch (o->oAction) {
         case FREE_BBALL_ACT_IDLE:
             if (is_point_within_radius_of_mario(o->oPosX, o->oPosY, o->oPosZ, 3000)) {

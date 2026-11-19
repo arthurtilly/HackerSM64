@@ -101,12 +101,6 @@ void bhv_water_droplet_splash_init(void) {
     cur_obj_scale(random_float() + 1.5f);
 }
 
-void bhv_bubble_splash_init(void) {
-    f32 waterLevel = find_water_level(o->oPosX, o->oPosZ);
-    obj_scale_xyz(o, 0.5f, 1.0f, 0.5f);
-    o->oPosY = waterLevel + 5.0f;
-}
-
 void bhv_shallow_water_splash_init(void) {
     // Have a 1 in 256 chance to spawn the fish particle easter egg.
     if ((random_u16() & 0xFF) <= 0) { // Strange

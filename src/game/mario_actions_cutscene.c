@@ -473,7 +473,7 @@ s32 act_reading_automatic_dialog(struct MarioState *m) {
 }
 
 s32 act_reading_sign(struct MarioState *m) {
-    if (m->pos[1] < (m->floorHeight + m->usedObj->hitboxHeight)) {
+    if (m->floor != NULL && m->pos[1] < m->floorHeight + m->usedObj->hitboxHeight) {
         m->pos[1] = m->floorHeight; // Fixes sign on slopes
     }
 
@@ -515,7 +515,7 @@ s32 act_reading_sign(struct MarioState *m) {
 }
 
 s32 act_debug_free_move(struct MarioState *m) {
-    struct WallCollisionData wallData;
+    struct SurfaceContact wall;
     struct Surface *floor, *ceil;
     Vec3f pos;
 
@@ -559,7 +559,7 @@ s32 act_debug_free_move(struct MarioState *m) {
         m->input &= ~INPUT_A_PRESSED;
         if (m->pos[1] <= (m->waterLevel - 100)) {
             return set_mario_action(m, ACT_WATER_IDLE, 0);
-        } else if (m->pos[1] <= m->floorHeight) {
+        } else if (m->floor != NULL && m->pos[1] <= m->floorHeight) {
             return set_mario_action(m, ACT_IDLE, 0);
         } else {
             // slight upwards boost to get you some hover time
@@ -575,17 +575,14 @@ s32 act_debug_free_move(struct MarioState *m) {
         pos[2] += speed * coss(m->intendedYaw);
     }
 
-    // HACKERSM64_DO: Add ability to ignore collision
-    //      - spawn pseudo floor object to prevent OOB death
-    resolve_and_return_wall_collisions(pos, 60.0f, 50.0f, &wallData);
+    resolve_wall_sphere(pos, gVec3fY, 60.0f, 50.0f, WALL_KICK_MAX_UP, &wall);
+    set_mario_wall(m, &wall);
+    if (is_outside_level_bounds(pos[0], pos[2])) return FALSE;
 
-    set_mario_wall(m, ((wallData.numWalls > 0) ? wallData.walls[0] : NULL));
     f32 floorHeight = find_floor(pos[0], pos[1], pos[2], &floor);
     f32 ceilHeight = find_mario_ceil(pos, floorHeight, &ceil);
 
-    if (floor == NULL) return FALSE;
-
-    if (ceilHeight - floorHeight >= 160.0f) {
+    if (floor == NULL || ceil == NULL || ceilHeight - floorHeight >= 160.0f) {
         if (floor != NULL && pos[1] < floorHeight) {
             pos[1] = floorHeight;
         }
@@ -1474,11 +1471,11 @@ s32 act_teleport_fade_in(struct MarioState *m) {
             }
             set_mario_action(m, ACT_WATER_IDLE, 0);
         } else {
-            set_mario_action(m, ACT_IDLE, 0);
+            set_mario_action(m, m->floor != NULL ? ACT_IDLE : ACT_FREEFALL, 0);
         }
     }
 
-    m->pos[1] = m->floorHeight;
+    if (m->floor != NULL) m->pos[1] = m->floorHeight;
     stop_and_set_height_to_floor(m);
 
     return FALSE;
@@ -1570,7 +1567,7 @@ s32 act_squished(struct MarioState *m) {
     }
 
     // steep floor
-    if (m->floor != NULL && m->floor->normal.y < 0.5f) {
+    if (m->floor != NULL && m->floorNormal.y < 0.5f) {
         surfAngle = m->floorYaw;
         underSteepSurf = TRUE;
     }
@@ -1982,15 +1979,12 @@ void generate_yellow_sparkles(s16 x, s16 y, s16 z, f32 radius) {
 // not sure what this does, returns the height of the floor.
 // (animation related?)
 static f32 end_obj_set_visual_pos(struct Object *obj) {
-    struct Surface *surf;
     Vec3s translation;
 
     find_mario_anim_flags_and_translation(obj, obj->header.gfx.angle[1], translation);
 
-    return find_floor((obj->header.gfx.pos[0] + translation[0]),
-                      (obj->header.gfx.pos[1] + 10.0f),
-                      (obj->header.gfx.pos[2] + translation[2]),
-                      &surf);
+    return find_floor_height(obj->header.gfx.pos[0] + translation[0], obj->header.gfx.pos[1] + 10.0f,
+                             obj->header.gfx.pos[2] + translation[2]);
 }
 
 // make Mario fall and soften wing cap gravity
@@ -2138,8 +2132,6 @@ static void end_peach_cutscene_descend_peach(struct MarioState *m) {
 
 // Mario runs to peach
 static void end_peach_cutscene_run_to_peach(struct MarioState *m) {
-    struct Surface *surf;
-
     if (m->actionTimer == 22) {
         sEndPeachAnimation = PEACH_ANIM_LOOK_UP_AND_OPEN_EYES;
     }
@@ -2149,7 +2141,9 @@ static void end_peach_cutscene_run_to_peach(struct MarioState *m) {
         advance_cutscene_step(m);
     }
 
-    m->pos[1] = find_floor(m->pos[0], m->pos[1], m->pos[2], &surf);
+    struct Surface *floor;
+    f32 height = find_floor(m->pos[0], m->pos[1], m->pos[2], &floor);
+    if (floor != NULL) m->pos[1] = height;
 
     set_mario_anim_with_accel(m, MARIO_ANIM_RUNNING, 0x00080000);
     play_step_sound(m, 9, 45);
@@ -2632,7 +2626,7 @@ static s32 act_end_waving_cutscene(struct MarioState *m) {
 }
 
 static s32 check_for_instant_quicksand(struct MarioState *m) {
-    if (m->floor->type == SURFACE_INSTANT_QUICKSAND && m->action & ACT_FLAG_INVULNERABLE
+    if (m->floorType == SURFACE_INSTANT_QUICKSAND && m->action & ACT_FLAG_INVULNERABLE
         && m->action != ACT_QUICKSAND_DEATH) {
         update_mario_sound_and_camera(m);
         return drop_and_set_mario_action(m, ACT_QUICKSAND_DEATH, 0);

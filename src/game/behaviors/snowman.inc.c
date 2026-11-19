@@ -17,10 +17,6 @@ static const Vec3f sSnowmanHeadPos = { -4230.0f, -1344.0f, 1813.0f };
 void bhv_snowmans_bottom_init(void) {
     vec3f_copy(&o->oHomeVec, &o->oPosVec);
 
-    o->oGravity = 10.0f;
-    o->oFriction = 0.999f;
-    o->oBuoyancy = 2.0f;
-
     o->oVelY = 0;
     o->oForwardVel = 0;
     o->oSnowmansBottomScale = 0.4f;
@@ -34,6 +30,7 @@ void bhv_snowmans_bottom_init(void) {
 
 void set_rolling_sphere_hitbox(void) {
     obj_set_hitbox(o, &sRollingSphereHitbox);
+    o->oWallHitboxRadius = o->hitboxRadius;
 
     if (o->oInteractStatus & INT_STATUS_INTERACTED) {
         o->oInteractStatus = INT_STATUS_NONE;
@@ -51,7 +48,7 @@ void adjust_rolling_face_pitch(f32 f12) {
 
 void snowmans_bottom_act_follow_path(void) { // axt 1
     o->oPathedStartWaypoint = segmented_to_virtual(&ccm_seg7_trajectory_snowman);
-    object_step_without_floor_orient();
+    cur_obj_move_rolling();
     s32 followStatus = cur_obj_follow_path();
     o->oSnowmansBottomTargetYaw = o->oPathedTargetYaw;
     o->oMoveAngleYaw = approach_s16_symmetric(o->oMoveAngleYaw, o->oSnowmansBottomTargetYaw, 0x400);
@@ -72,7 +69,7 @@ void snowmans_bottom_act_follow_path(void) { // axt 1
 }
 
 void snowmans_bottom_act_final_stretch(void) { // act 2
-    object_step_without_floor_orient();
+    cur_obj_move_rolling();
 
     if (o->oForwardVel > 70.0f) {
         o->oForwardVel = 70.0f;
@@ -98,14 +95,14 @@ void snowmans_bottom_act_final_stretch(void) { // act 2
 }
 
 void snowmans_bottom_act_reach_end(void) { // act 3
-    s16 collisionFlags = object_step_without_floor_orient();
+    cur_obj_move_rolling();
 
-    if ((collisionFlags & OBJ_COL_FLAGS_LANDED) == OBJ_COL_FLAGS_LANDED) {
-        o->oAction = 4;
+    if (o->oMoveFlags & OBJ_MOVE_ON_GROUND) {
+        o->oAction = SNOWMANS_BOTTOM_ACT_COLLISION;
         cur_obj_become_intangible();
     }
 
-    if (collisionFlags & OBJ_COL_FLAG_GROUNDED) {
+    if (o->oMoveFlags & OBJ_MOVE_MASK_ON_GROUND) {
         spawn_mist_particles_variable(0, 0, 70.0f);
         o->oPosX = sSnowmanHeadPos[0];
         o->oPosZ = sSnowmanHeadPos[2];
@@ -159,10 +156,6 @@ void bhv_snowmans_head_init(void) {
 
     cur_obj_scale(0.7f);
 
-    o->oGravity = 5.0f;
-    o->oFriction = 0.999f;
-    o->oBuoyancy = 2.0f;
-
     if ((starFlags & (1 << behParams)) && gCurrActNum != behParams + 1) {
         spawn_object_abs_with_rot(o, 0, MODEL_CCM_SNOWMAN_BASE, bhvBigSnowmanWhole, sSnowmanHeadPos[0], sSnowmanHeadPos[1], sSnowmanHeadPos[2], 0, 0, 0);
         vec3f_copy(&o->oPosVec, sSnowmanHeadPos);
@@ -171,8 +164,6 @@ void bhv_snowmans_head_init(void) {
 }
 
 void bhv_snowmans_head_loop(void) {
-    s16 collisionFlags;
-
     switch (o->oAction) {
         case SNOWMANS_HEAD_ACT_ASK:
             if (trigger_obj_dialog_when_facing(&o->oSnowmansHeadDialogActive, DIALOG_109, 400.0f, MARIO_DIALOG_LOOK_FRONT)) {
@@ -184,15 +175,9 @@ void bhv_snowmans_head_loop(void) {
             break;
 
         case SNOWMANS_HEAD_ACT_JUMPING:
-            collisionFlags = object_step_without_floor_orient();
-            if (collisionFlags & OBJ_COL_FLAG_NO_Y_VEL) {
-                o->oAction = SNOWMANS_HEAD_ACT_LAND;
-            }
-            break;
-
-        case SNOWMANS_HEAD_ACT_LAND:
-            object_step_without_floor_orient();
-            if (o->oPosY < -994.0f) {
+            cur_obj_update_floor_and_walls();
+            cur_obj_move_standard(60);
+            if (o->oVelY <= 0.0f && o->oPosY < -994.0f) {
                 o->oPosY = -994.0f;
                 o->oAction = SNOWMANS_HEAD_ACT_THANK;
                 cur_obj_play_sound_2(SOUND_OBJ_SNOWMAN_EXPLODE);

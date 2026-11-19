@@ -95,8 +95,7 @@ void bhv_coin_init(void) {
 }
 
 void bhv_coin_loop(void) {
-    cur_obj_update_floor_and_walls();
-    cur_obj_if_hit_wall_bounce_away();
+    cur_obj_update_floor_and_bounce_off_walls();
     cur_obj_move_standard(-62);
 
     struct Surface *floor = o->oFloor;
@@ -263,8 +262,7 @@ void bhv_coin_formation_loop(void) {
 }
 
 void coin_inside_boo_act_dropped(void) {
-    cur_obj_update_floor_and_walls();
-    cur_obj_if_hit_wall_bounce_away();
+    cur_obj_update_floor_and_bounce_off_walls();
 
     if (o->oMoveFlags & OBJ_MOVE_BOUNCE) {
         cur_obj_play_sound_2(SOUND_GENERAL_COIN_DROP);

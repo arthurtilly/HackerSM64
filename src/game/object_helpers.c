@@ -27,8 +27,6 @@
 #include "spawn_object.h"
 #include "spawn_sound.h"
 
-static s32 clear_move_flag(u32 *bitSet, s32 flag);
-
 Gfx *geo_update_projectile_pos_from_parent(s32 callContext, UNUSED struct GraphNode *node, Mat4 mtx) {
     if (callContext == GEO_CONTEXT_RENDER) {
         struct Object *projObj = (struct Object *) gCurGraphNodeObject; // HACKERSM64_DO: change global type to Object pointer
@@ -906,8 +904,7 @@ void obj_become_tangible(struct Object *obj) {
 }
 
 void cur_obj_update_floor_height(void) {
-    struct Surface *floor;
-    o->oFloorHeight = find_floor(o->oPosX, o->oPosY, o->oPosZ, &floor);
+    o->oFloorHeight = find_floor_height(o->oPosX, o->oPosY, o->oPosZ);
 }
 
 struct Surface *cur_obj_update_floor_height_and_get_floor(void) {
@@ -921,16 +918,16 @@ static void apply_drag_to_value(f32 *value, f32 dragStrength) {
 
     if (*value != 0) {
         //! Can overshoot if |*value| > 1 / (dragStrength * 0.0001)
-        decel = sqr(*value) * (dragStrength * 0.0001L);
+        decel = sqr(*value) * (dragStrength * 0.0001f);
 
         if (*value > 0) {
             *value -= decel;
-            if (*value < 0.001L) {
+            if (*value < 0.001f) {
                 *value = 0;
             }
         } else {
             *value += decel;
-            if (*value > -0.001L) {
+            if (*value > -0.001f) {
                 *value = 0;
             }
         }
@@ -942,179 +939,98 @@ void cur_obj_apply_drag_xz(f32 dragStrength) {
     apply_drag_to_value(&o->oVelZ, dragStrength);
 }
 
+static void set_object_floor(const struct SurfaceContact *floor, f32 height) {
+    o->oFloorHeight = height;
+    o->oFloor = floor->surface;
+    o->oFloorType = floor->surface != NULL ? floor->type : SURFACE_DEFAULT;
+    o->oFloorRoom = floor->surface != NULL ? floor->room : 0;
+}
+
 static void cur_obj_move_xz(f32 steepSlopeNormalY, s32 careAboutEdgesAndSteepSlopes) {
-    struct Surface *intendedFloor;
-
-    f32 intendedX = o->oPosX + o->oVelX;
-    f32 intendedZ = o->oPosZ + o->oVelZ;
-
-    f32 intendedFloorHeight = find_floor(intendedX, o->oPosY, intendedZ, &intendedFloor);
-    f32 deltaFloorHeight = intendedFloorHeight - o->oFloorHeight;
-
     o->oMoveFlags &= ~OBJ_MOVE_HIT_EDGE;
+    if (o->oVelX == 0.0f && o->oVelZ == 0.0f) return;
 
-    if (o->oRoom != -1
-        && intendedFloor != NULL
-        && intendedFloor->room != 0
-        && o->oRoom != intendedFloor->room
-        && intendedFloor->room != 18) {
-        // Don't leave native room
+    f32 x = o->oPosX + o->oVelX, z = o->oPosZ + o->oVelZ;
+    struct SurfaceContact floor;
+    f32 height = find_floor_hit(x, o->oPosY, z, &floor);
+    if (floor.surface == NULL || height < FLOOR_LOWER_LIMIT_MISC) {
+        o->oMoveFlags |= OBJ_MOVE_HIT_EDGE;
+        return;
+    }
+    if (o->oRoom != -1 && floor.room != 0 && o->oRoom != floor.room && floor.room != 18) return;
+
+    f32 rise = height - o->oFloorHeight;
+    if (rise < 5.0f) {
+        if (careAboutEdgesAndSteepSlopes
+            && (floor.normal.y <= steepSlopeNormalY || (rise < -50.0f && (o->oMoveFlags & OBJ_MOVE_ON_GROUND)))) {
+            o->oMoveFlags |= OBJ_MOVE_HIT_EDGE;
+            return;
+        }
+    } else if (floor.normal.y <= steepSlopeNormalY && o->oPosY <= height) {
         return;
     }
 
-    if (intendedFloorHeight < FLOOR_LOWER_LIMIT_MISC) {
-        // Don't move into OoB
-        o->oMoveFlags |= OBJ_MOVE_HIT_EDGE;
-    } else if (deltaFloorHeight < 5.0f) {
-        if (!careAboutEdgesAndSteepSlopes) {
-            // If we don't care about edges or steep slopes, okay to move
-            o->oPosX = intendedX;
-            o->oPosZ = intendedZ;
-        } else if (deltaFloorHeight < -50.0f && (o->oMoveFlags & OBJ_MOVE_ON_GROUND)) {
-            // Don't walk off an edge
-            o->oMoveFlags |= OBJ_MOVE_HIT_EDGE;
-        } else if (intendedFloor->normal.y > steepSlopeNormalY) {
-            // Allow movement onto a slope, provided it's not too steep
-            o->oPosX = intendedX;
-            o->oPosZ = intendedZ;
-        } else {
-            // We are likely trying to move onto a steep downward slope
-            o->oMoveFlags |= OBJ_MOVE_HIT_EDGE;
-        }
-    } else if (intendedFloor->normal.y > steepSlopeNormalY || o->oPosY > intendedFloorHeight) {
-        // Allow movement upward, provided either:
-        // - The target floor is flat enough (e.g. walking up stairs)
-        // - We are above the target floor (most likely in the air)
-        o->oPosX = intendedX;
-        o->oPosZ = intendedZ;
-    }
-    // We are likely trying to move onto a steep upward slope
+    o->oPosX = x;
+    o->oPosZ = z;
+    set_object_floor(&floor, height);
 }
 
-static void cur_obj_move_update_underwater_flags(void) {
-    f32 decelY = (f32)(sqrtf(o->oVelY * o->oVelY) * (o->oDragStrength * 7.0f)) / 100.0L;
-
-    if (o->oVelY > 0) {
-        o->oVelY -= decelY;
-    } else {
-        o->oVelY += decelY;
-    }
-
-    if (o->oPosY < o->oFloorHeight) {
+static void cur_obj_land(f32 bounciness, u32 previousFlags) {
+    if (o->oPosY <= o->oFloorHeight) {
         o->oPosY = o->oFloorHeight;
-        o->oMoveFlags |= OBJ_MOVE_UNDERWATER_ON_GROUND;
-    } else {
-        o->oMoveFlags |= OBJ_MOVE_UNDERWATER_OFF_GROUND;
-    }
-}
-
-static void cur_obj_move_update_ground_air_flags(UNUSED f32 gravity, f32 bounciness) {
-    o->oMoveFlags &= ~OBJ_MOVE_BOUNCE;
-
-    if (o->oPosY < o->oFloorHeight) {
-        // On the first frame that we touch the ground, set OBJ_MOVE_LANDED.
-        // On subsequent frames, set OBJ_MOVE_ON_GROUND
-        if (!(o->oMoveFlags & OBJ_MOVE_ON_GROUND)) {
-            if (clear_move_flag(&o->oMoveFlags, OBJ_MOVE_LANDED)) {
-                o->oMoveFlags |= OBJ_MOVE_ON_GROUND;
-            } else {
-                o->oMoveFlags |= OBJ_MOVE_LANDED;
-            }
-        }
-
-        o->oPosY = o->oFloorHeight;
-
+        o->oMoveFlags |= (previousFlags & OBJ_MOVE_MASK_ON_GROUND) ? OBJ_MOVE_ON_GROUND : OBJ_MOVE_LANDED;
         if (o->oVelY < 0.0f) {
             o->oVelY *= bounciness;
-        }
-
-        if (o->oVelY > 5.0f) {
-            //! This overestimates since velY could be > 5 here
-            //! without bounce (e.g. jump into misa).
-            o->oMoveFlags |= OBJ_MOVE_BOUNCE;
+            if (o->oVelY > 5.0f) o->oMoveFlags |= OBJ_MOVE_BOUNCE;
         }
     } else {
-        o->oMoveFlags &= ~OBJ_MOVE_LANDED;
-        if (clear_move_flag(&o->oMoveFlags, OBJ_MOVE_ON_GROUND)) {
-            o->oMoveFlags |= OBJ_MOVE_LEFT_GROUND;
-        }
+        o->oMoveFlags |= OBJ_MOVE_IN_AIR;
+        if (previousFlags & OBJ_MOVE_ON_GROUND) o->oMoveFlags |= OBJ_MOVE_LEFT_GROUND;
     }
-
-    o->oMoveFlags &= ~(OBJ_MOVE_ABOVE_LAVA | OBJ_MOVE_ABOVE_DEATH_BARRIER);
-    if (o->oFloorType == SURFACE_BURNING) {
-        o->oMoveFlags |= OBJ_MOVE_ABOVE_LAVA;
-    } else if ((o->oFloorType == SURFACE_DEATH_PLANE) || (o->oFloorType == SURFACE_VERTICAL_WIND)) {
-        //! This maybe misses SURFACE_WARP
-        o->oMoveFlags |= OBJ_MOVE_ABOVE_DEATH_BARRIER;
-    }
-
-    o->oMoveFlags &= ~OBJ_MOVE_MASK_IN_WATER;
-}
-
-static f32 cur_obj_move_y_and_get_water_level(f32 gravity, f32 buoyancy) {
-    o->oVelY += gravity + buoyancy;
-    if (o->oVelY < -78.0f) {
-        o->oVelY = -78.0f;
-    }
-
-    o->oPosY += o->oVelY;
-    if (o->activeFlags & ACTIVE_FLAG_IGNORE_ENV_BOXES) {
-        return FLOOR_LOWER_LIMIT;
-    }
-
-    return find_water_level(o->oPosX, o->oPosZ);
 }
 
 void cur_obj_move_y(f32 gravity, f32 bounciness, f32 buoyancy) {
-    f32 waterLevel;
+    u32 previousFlags = o->oMoveFlags;
+    f32 waterLevel = (o->activeFlags & ACTIVE_FLAG_IGNORE_ENV_BOXES) ? FLOOR_LOWER_LIMIT
+                                                                    : find_water_level(o->oPosX, o->oPosZ);
+    s32 waterAboveFloor = (waterLevel > o->oFloorHeight);
+    s32 inWater = waterAboveFloor && o->oPosY <= waterLevel && (previousFlags & OBJ_MOVE_MASK_IN_WATER);
 
-    o->oMoveFlags &= ~OBJ_MOVE_LEFT_GROUND;
-
-    if (o->oMoveFlags & OBJ_MOVE_AT_WATER_SURFACE) {
-        if (o->oVelY > 5.0f) {
-            o->oMoveFlags &= ~OBJ_MOVE_MASK_IN_WATER;
-            o->oMoveFlags |= OBJ_MOVE_LEAVING_WATER;
-        }
+    o->oMoveFlags &= ~(OBJ_MOVE_MASK_ON_GROUND | OBJ_MOVE_MASK_IN_WATER | OBJ_MOVE_IN_AIR
+                     | OBJ_MOVE_LEFT_GROUND | OBJ_MOVE_LEAVING_WATER | OBJ_MOVE_BOUNCE
+                     | OBJ_MOVE_ABOVE_LAVA | OBJ_MOVE_ABOVE_DEATH_BARRIER);
+    if (inWater && (previousFlags & OBJ_MOVE_AT_WATER_SURFACE) && o->oVelY > 5.0f) {
+        inWater = FALSE;
+        o->oMoveFlags |= OBJ_MOVE_LEAVING_WATER;
     }
 
-    if (!(o->oMoveFlags & OBJ_MOVE_MASK_IN_WATER)) {
-        waterLevel = cur_obj_move_y_and_get_water_level(gravity, 0.0f);
-        if (o->oPosY > waterLevel) {
-            //! We only handle floor collision if the object does not enter
-            //  water. This allows e.g. coins to clip through floors if they
-            //  enter water on the same frame.
-            cur_obj_move_update_ground_air_flags(gravity, bounciness);
-        } else {
-            o->oMoveFlags |= OBJ_MOVE_ENTERED_WATER;
-            o->oMoveFlags &= ~OBJ_MOVE_MASK_ON_GROUND;
-        }
-    } else {
-        o->oMoveFlags &= ~OBJ_MOVE_ENTERED_WATER;
+    o->oVelY += gravity + (inWater ? buoyancy : 0.0f);
+    if (o->oVelY < -78.0f) o->oVelY = -78.0f;
+    o->oPosY += o->oVelY;
 
-        waterLevel = cur_obj_move_y_and_get_water_level(gravity, buoyancy);
-        if (o->oPosY < waterLevel) {
-            cur_obj_move_update_underwater_flags();
-        } else {
-            if (o->oPosY < o->oFloorHeight) {
-                o->oPosY = o->oFloorHeight;
-                o->oMoveFlags &= ~OBJ_MOVE_MASK_IN_WATER;
-            } else {
-                o->oPosY = waterLevel;
-                o->oVelY = 0.0f;
-                o->oMoveFlags &= ~(OBJ_MOVE_UNDERWATER_OFF_GROUND | OBJ_MOVE_UNDERWATER_ON_GROUND);
-                o->oMoveFlags |= OBJ_MOVE_AT_WATER_SURFACE;
-            }
-        }
+    if (o->oFloorType == SURFACE_BURNING) {
+        o->oMoveFlags |= OBJ_MOVE_ABOVE_LAVA;
+    } else if (o->oFloorType == SURFACE_DEATH_PLANE || o->oFloorType == SURFACE_VERTICAL_WIND) {
+        o->oMoveFlags |= OBJ_MOVE_ABOVE_DEATH_BARRIER;
     }
-    COND_BIT((!(o->oMoveFlags & (OBJ_MOVE_MASK_ON_GROUND | OBJ_MOVE_AT_WATER_SURFACE | OBJ_MOVE_UNDERWATER_OFF_GROUND))), o->oMoveFlags, OBJ_MOVE_IN_AIR);
-}
 
-static s32 clear_move_flag(u32 *bitSet, s32 flag) {
-    if (*bitSet & flag) {
-        *bitSet &= flag ^ 0xFFFFFFFF;
-        return TRUE;
+    if (!waterAboveFloor || (!inWater && o->oPosY > waterLevel)) {
+        cur_obj_land(bounciness, previousFlags);
+        return;
+    }
+
+    if (!inWater) o->oMoveFlags |= OBJ_MOVE_ENTERED_WATER;
+    if (o->oPosY <= o->oFloorHeight) {
+        o->oPosY = o->oFloorHeight;
+        o->oVelY = 0.0f;
+        o->oMoveFlags |= OBJ_MOVE_UNDERWATER_ON_GROUND;
+    } else if (o->oPosY >= waterLevel) {
+        o->oPosY = waterLevel;
+        o->oVelY = 0.0f;
+        o->oMoveFlags |= OBJ_MOVE_AT_WATER_SURFACE;
     } else {
-        return FALSE;
+        o->oVelY *= 1.0f - o->oDragStrength * 0.07f;
+        o->oMoveFlags |= OBJ_MOVE_UNDERWATER_OFF_GROUND;
     }
 }
 
@@ -1260,10 +1176,9 @@ static void obj_spawn_loot_coins(struct Object *obj, s32 numCoins, f32 baseYVel,
                                     const BehaviorScript *coinBehavior,
                                     s16 posJitter, ModelID16 model) {
     s32 i;
-    struct Surface *floor;
     struct Object *coin;
 
-    f32 spawnHeight = find_floor(obj->oPosX, obj->oPosY, obj->oPosZ, &floor);
+    f32 spawnHeight = find_floor_height(obj->oPosX, obj->oPosY, obj->oPosZ);
     if (obj->oPosY - spawnHeight > 100.0f) {
         spawnHeight = obj->oPosY;
     }
@@ -1322,141 +1237,69 @@ UNUSED s32 cur_obj_advance_looping_anim(void) {
     return (animFrame << 16) / loopEnd;
 }
 
-static s32 cur_obj_detect_steep_floor(s16 steepAngleDegrees) {
-    struct Surface *intendedFloor;
-    if (o->oForwardVel != 0.0f) {
-        f32 intendedX = o->oPosX + o->oVelX;
-        f32 intendedZ = o->oPosZ + o->oVelZ;
-        f32 intendedFloorHeight = find_floor(intendedX, o->oPosY, intendedZ, &intendedFloor);
-        f32 deltaFloorHeight = intendedFloorHeight - o->oFloorHeight;
-
-        if (intendedFloorHeight < FLOOR_LOWER_LIMIT_MISC) {
-            o->oWallAngle = (o->oMoveAngleYaw + 0x8000);
-            return TRUE;
-        } else if ((intendedFloor->normal.y < coss((s16)(steepAngleDegrees * (0x10000 / 360))))
-                   && (deltaFloorHeight > 0)
-                   && (intendedFloorHeight > o->oPosY)) {
-            o->oWallAngle = atan2s(intendedFloor->normal.z, intendedFloor->normal.x);
-            return TRUE;
-        } else {
-            return FALSE;
-        }
+static s32 cur_obj_detect_steep_floor(void) {
+    if (o->oForwardVel == 0.0f || (o->oVelX == 0.0f && o->oVelZ == 0.0f)) return FALSE;
+    struct SurfaceContact floor;
+    f32 height = find_floor_hit(o->oPosX + o->oVelX, o->oPosY, o->oPosZ + o->oVelZ, &floor);
+    if (height < FLOOR_LOWER_LIMIT_MISC) {
+        o->oWallAngle = o->oMoveAngleYaw + 0x8000;
+        return TRUE;
     }
-
+    if (height > o->oFloorHeight && height > o->oPosY && floor.normal.y < 0.5f) {
+        o->oWallAngle = SURFACE_YAW(&floor);
+        return TRUE;
+    }
     return FALSE;
 }
 
 s32 cur_obj_resolve_wall_collisions(void) {
-    f32 radius = o->oWallHitboxRadius;
-    if (radius > 0.1f) {
-        struct WallCollisionData collisionData;
-        collisionData.offsetY = 10.0f;
-        collisionData.radius  = radius;
-        collisionData.x = (s16) o->oPosX;
-        collisionData.y = (s16) o->oPosY;
-        collisionData.z = (s16) o->oPosZ;
-        s32 numCollisions = find_wall_collisions(&collisionData);
-        if (numCollisions != 0) {
-            o->oPosX = collisionData.x;
-            o->oPosY = collisionData.y;
-            o->oPosZ = collisionData.z;
-            struct Surface *wall = collisionData.walls[collisionData.numWalls - 1];
-
-            o->oWallAngle = SURFACE_YAW(wall);
-            return (abs_angle_diff(o->oWallAngle, o->oMoveAngleYaw) > 0x4000);
-        }
-    }
-
-    return FALSE;
+    struct SurfaceContact wall;
+    if (o->oWallHitboxRadius <= 0.1f
+        || !resolve_wall_sphere(&o->oPosVec, gVec3fY, 10.0f, o->oWallHitboxRadius, 1.0f, &wall)) return FALSE;
+    o->oWallAngle = SURFACE_YAW(&wall);
+    return abs_angle_diff(o->oWallAngle, o->oMoveAngleYaw) > 0x4000;
 }
 
 static void cur_obj_update_floor(void) {
-    struct Surface *floor = cur_obj_update_floor_height_and_get_floor();
-    o->oFloor = floor;
-
-    if (floor != NULL) {
-        SurfaceType floorType = floor->type;
-        o->oFloorType = floorType;
-        o->oFloorRoom = floor->room;
-    } else {
-        o->oFloorType = SURFACE_DEFAULT;
-        o->oFloorRoom = 0;
-    }
-}
-
-static void cur_obj_update_floor_and_resolve_wall_collisions(s16 steepSlopeDegrees) {
-    if (o->activeFlags & (ACTIVE_FLAG_FAR_AWAY | ACTIVE_FLAG_IN_DIFFERENT_ROOM)) {
-        cur_obj_update_floor();
-        o->oMoveFlags &= ~(OBJ_MOVE_HIT_WALL | OBJ_MOVE_MASK_IN_WATER);
-
-        if (o->oPosY > o->oFloorHeight) {
-            o->oMoveFlags |= OBJ_MOVE_IN_AIR;
-        }
-    } else {
-        o->oMoveFlags &= ~OBJ_MOVE_HIT_WALL;
-        if (cur_obj_resolve_wall_collisions()) {
-            o->oMoveFlags |= OBJ_MOVE_HIT_WALL;
-        }
-
-        cur_obj_update_floor();
-
-        if (o->oPosY > o->oFloorHeight) {
-            o->oMoveFlags |= OBJ_MOVE_IN_AIR;
-        }
-
-        if (cur_obj_detect_steep_floor(steepSlopeDegrees)) {
-            o->oMoveFlags |= OBJ_MOVE_HIT_WALL;
-        }
-    }
+    struct SurfaceContact floor;
+    f32 height = find_floor_hit(o->oPosX, o->oPosY, o->oPosZ, &floor);
+    set_object_floor(&floor, height);
 }
 
 void cur_obj_update_floor_and_walls(void) {
-    cur_obj_update_floor_and_resolve_wall_collisions(60);
+    if (o->activeFlags & (ACTIVE_FLAG_FAR_AWAY | ACTIVE_FLAG_IN_DIFFERENT_ROOM)) {
+        cur_obj_update_floor();
+        o->oMoveFlags &= ~(OBJ_MOVE_HIT_WALL | OBJ_MOVE_MASK_IN_WATER);
+    } else {
+        s32 hitWall = cur_obj_resolve_wall_collisions();
+        cur_obj_update_floor();
+        COND_BIT(hitWall || cur_obj_detect_steep_floor(), o->oMoveFlags, OBJ_MOVE_HIT_WALL);
+    }
+    if (o->oPosY > o->oFloorHeight) o->oMoveFlags |= OBJ_MOVE_IN_AIR;
+}
+
+void cur_obj_update_floor_and_bounce_off_walls(void) {
+    cur_obj_update_floor_and_walls();
+    if (o->oMoveFlags & OBJ_MOVE_HIT_WALL) {
+        o->oMoveAngleYaw = cur_obj_reflect_move_angle_off_wall();
+    }
 }
 
 void cur_obj_move_standard(s16 steepSlopeAngleDegrees) {
-    f32 gravity = o->oGravity;
-    f32 bounciness = o->oBounciness;
-    f32 buoyancy = o->oBuoyancy;
-    f32 dragStrength = o->oDragStrength;
-    f32 steepSlopeNormalY;
-    s32 careAboutEdgesAndSteepSlopes = FALSE;
-    s32 negativeSpeed = FALSE;
+    if (o->activeFlags & (ACTIVE_FLAG_FAR_AWAY | ACTIVE_FLAG_IN_DIFFERENT_ROOM)) return;
 
-    //! Because some objects allow these active flags to be set but don't
-    //  avoid updating when they are, we end up with "partial" updates, where
-    //  an object's internal state will be updated, but it doesn't move.
-    //  This allows numerous glitches and is typically referred to as
-    //  deactivation (though this term has a different meaning in the code).
-    //  Objects that do this will be marked with //PARTIAL_UPDATE.
-    if (!(o->activeFlags & (ACTIVE_FLAG_FAR_AWAY | ACTIVE_FLAG_IN_DIFFERENT_ROOM))) {
-        if (steepSlopeAngleDegrees < 0) {
-            careAboutEdgesAndSteepSlopes = TRUE;
-            steepSlopeAngleDegrees = -steepSlopeAngleDegrees;
-        }
-        // Optimize for the most commonly used values
-        if (steepSlopeAngleDegrees == 78) {
-            steepSlopeNormalY =  COS78;
-        } else if (steepSlopeAngleDegrees == -78) {
-            steepSlopeNormalY = -COS78;
-        } else {
-            steepSlopeNormalY = coss(DEGREES(steepSlopeAngleDegrees));
-        }
+    s32 avoidEdges = (steepSlopeAngleDegrees < 0);
+    if (avoidEdges) steepSlopeAngleDegrees = -steepSlopeAngleDegrees;
+    f32 normalY = steepSlopeAngleDegrees == 78 ? COS78 : coss(DEGREES(steepSlopeAngleDegrees));
 
-        cur_obj_compute_vel_xz();
-        cur_obj_apply_drag_xz(dragStrength);
-
-        cur_obj_move_xz(steepSlopeNormalY, careAboutEdgesAndSteepSlopes);
-        cur_obj_move_y(gravity, bounciness, buoyancy);
-
-        if (o->oForwardVel < 0.0f) {
-            negativeSpeed = TRUE;
-        }
-        o->oForwardVel = sqrtf(sqr(o->oVelX) + sqr(o->oVelZ));
-        if (negativeSpeed == TRUE) {
-            o->oForwardVel = -o->oForwardVel;
-        }
+    cur_obj_compute_vel_xz();
+    if (o->oDragStrength != 0.0f && o->oForwardVel != 0.0f) {
+        cur_obj_apply_drag_xz(o->oDragStrength);
+        f32 speed = sqrtf(sqr(o->oVelX) + sqr(o->oVelZ));
+        o->oForwardVel = o->oForwardVel < 0.0f ? -speed : speed;
     }
+    cur_obj_move_xz(normalY, avoidEdges);
+    cur_obj_move_y(o->oGravity, o->oBounciness, o->oBuoyancy);
 }
 
 UNUSED static s32 cur_obj_within_bounds(f32 bounds) {
@@ -1931,12 +1774,6 @@ void obj_set_collision_data(struct Object *obj, const void *segAddr) {
     obj->collisionData = segmented_to_virtual(segAddr);
 }
 
-void cur_obj_if_hit_wall_bounce_away(void) {
-    if (o->oMoveFlags & OBJ_MOVE_HIT_WALL) {
-        o->oMoveAngleYaw = o->oWallAngle;
-    }
-}
-
 s32 cur_obj_hide_if_mario_far_away_y(f32 distY) {
     if (absf(o->oPosY - gMarioObject->oPosY) < distY) {
         cur_obj_unhide();
@@ -2180,17 +2017,11 @@ s32 cur_obj_update_dialog_with_cutscene(s32 actionArg, s32 dialogFlags, s32 cuts
 }
 
 void cur_obj_align_gfx_with_floor(void) {
-    struct Surface *floor;
-    Vec3f position;
-
-    vec3f_copy(position, &o->oPosVec);
-
-    find_floor(position[0], position[1], position[2], &floor);
-    if (floor != NULL) {
-        Vec3f floorNormal;
-        surface_normal_to_vec3f(floorNormal, floor);
-
-        mtxf_align_terrain_normal(o->transform, floorNormal, position, o->oFaceAngleYaw);
+    if (o->oFloor != NULL) {
+        Vec3f normal, position;
+        surface_normal_to_vec3f(normal, o->oFloor);
+        vec3f_copy_y_off(position, &o->oPosVec, o->oGraphYOffset);
+        mtxf_align_terrain_normal(o->transform, normal, position, o->oFaceAngleYaw);
         o->header.gfx.throwMatrix = &o->transform;
     }
 }

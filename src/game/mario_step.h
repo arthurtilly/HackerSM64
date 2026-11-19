@@ -14,8 +14,6 @@ struct BullyCollisionData {
   /*0x14*/ f32 velZ;
 };
 
-extern struct Surface gWaterSurfacePseudoFloor;
-
 f32 get_additive_y_vel_for_jumps(void);
 void stub_mario_step_1(struct MarioState *m);
 void stub_mario_step_2(void);
@@ -30,6 +28,10 @@ u32 mario_update_moving_sand(struct MarioState *m);
 u32 mario_update_windy_ground(struct MarioState *m);
 void stop_and_set_height_to_floor(struct MarioState *m);
 s32 stationary_ground_step(struct MarioState *m);
+struct SurfaceContact;
+void get_shell_water_floor(f32 height, struct SurfaceContact *floor);
+void resolve_mario_ground_walls(Vec3f pos);
+s32 move_mario_in_water(struct MarioState *m, const Vec3f move);
 s32 perform_ground_step(struct MarioState *m);
 s32 perform_air_step(struct MarioState *m, u32 stepArg);
 

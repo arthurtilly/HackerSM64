@@ -3,7 +3,6 @@
 #include "sm64.h"
 #include "engine/math_util.h"
 #include "engine/surface_collision.h"
-#include "engine/surface_load.h"
 #include "mario.h"
 #include "audio/external.h"
 #include "game_init.h"
@@ -14,20 +13,11 @@
 
 static s16 sMovingSandSpeeds[] = { 12, 8, 4, 0 };
 
-struct Surface gWaterSurfacePseudoFloor = {
-    SURFACE_VERY_SLIPPERY,      // type
-    0x0,                        // force
-    0x0,                        // flags
-     0,                         // room
-    -SURFACE_VERTICAL_BUFFER,   // lowerY
-     SURFACE_VERTICAL_BUFFER,   // upperY
-    { 0, 0, 0 },                // vertex1
-    { 0, 0, 0 },                // vertex2
-    { 0, 0, 0 },                // vertex3
-    { 0.0f, 1.0f, 0.0f },       // normal
-    0.0f,                       // originOffset
-    NULL,                       // object
-};
+void get_shell_water_floor(f32 height, struct SurfaceContact *floor) {
+    static struct Surface water = { .type = SURFACE_VERY_SLIPPERY, .normal = { 0.0f, 1.0f, 0.0f } };
+    water.originOffset = -height;
+    *floor = (struct SurfaceContact){ .normal = water.normal, .type = water.type, .surface = &water };
+}
 
 /**
  * Always returns zero. This may have been intended
@@ -106,7 +96,7 @@ void init_bully_collision_data(struct BullyCollisionData *data, f32 posX, f32 po
 }
 
 void mario_bonk_reflection(struct MarioState *m, u32 negateSpeed) {
-    if (m->wall != NULL) {
+    if (m->hasWall) {
         s16 wallAngle = m->wallYaw;
         m->faceAngle[1] = wallAngle - (s16)(m->faceAngle[1] - wallAngle);
 
@@ -131,7 +121,7 @@ u32 mario_update_quicksand(struct MarioState *m, f32 sinkingSpeed) {
             m->quicksandDepth = 1.1f;
         }
 
-        switch (m->floor->type) {
+        switch (m->floorType) {
             case SURFACE_SHALLOW_QUICKSAND:
                 if ((m->quicksandDepth += sinkingSpeed) >= 10.0f) {
                     m->quicksandDepth = 10.0f;
@@ -189,13 +179,12 @@ u32 mario_push_off_steep_floor(struct MarioState *m, u32 action, u32 actionArg) 
 }
 
 u32 mario_update_moving_sand(struct MarioState *m) {
-    struct Surface *floor = m->floor;
-    s32 floorType = floor->type;
+    s32 floorType = m->floorType;
 
     if (floorType == SURFACE_DEEP_MOVING_QUICKSAND || floorType == SURFACE_SHALLOW_MOVING_QUICKSAND
         || floorType == SURFACE_MOVING_QUICKSAND || floorType == SURFACE_INSTANT_MOVING_QUICKSAND) {
-        s16 pushAngle = floor->force << 8;
-        f32 pushSpeed = sMovingSandSpeeds[floor->force >> 8];
+        s16 pushAngle = m->floor->force << 8;
+        f32 pushSpeed = sMovingSandSpeeds[m->floor->force >> 8];
 
         m->vel[0] += pushSpeed * sins(pushAngle);
         m->vel[2] += pushSpeed * coss(pushAngle);
@@ -207,11 +196,9 @@ u32 mario_update_moving_sand(struct MarioState *m) {
 }
 
 u32 mario_update_windy_ground(struct MarioState *m) {
-    struct Surface *floor = m->floor;
-
-    if (floor->type == SURFACE_HORIZONTAL_WIND) {
+    if (m->floorType == SURFACE_HORIZONTAL_WIND) {
         f32 pushSpeed;
-        s16 pushAngle = floor->force << 8;
+        s16 pushAngle = m->floor->force << 8;
 
         if (m->action & ACT_FLAG_MOVING) {
             s16 pushDYaw = m->faceAngle[1] - pushAngle;
@@ -243,7 +230,7 @@ void stop_and_set_height_to_floor(struct MarioState *m) {
     m->vel[1] = 0.0f;
 
     // HackerSM64 2.1: This check fixes the ledgegrab downwarp after being pushed off a ledge.
-    if (m->pos[1] <= m->floorHeight + 160.0f) {
+    if (m->floor != NULL && m->pos[1] <= m->floorHeight + 160.0f) {
         m->pos[1] = m->floorHeight;
     }
 
@@ -262,7 +249,7 @@ s32 stationary_ground_step(struct MarioState *m) {
         stepResult = perform_ground_step(m);
     } else {
         // HackerSM64 2.1: This check prevents the downwarps that plagued stationary actions.
-        if (m->pos[1] <= m->floorHeight + 160.0f) {
+        if (m->floor != NULL && m->pos[1] <= m->floorHeight + 160.0f) {
             m->pos[1] = m->floorHeight;
         }
 
@@ -273,295 +260,221 @@ s32 stationary_ground_step(struct MarioState *m) {
     return stepResult;
 }
 
-static s32 perform_ground_quarter_step(struct MarioState *m, Vec3f nextPos) {
-    struct WallCollisionData lowerWall, upperWall;
-    struct Surface *ceil, *floor;
+enum MarioMovement { MOVE_GROUND, MOVE_AIR, MOVE_SWIM };
 
-    s16 i;
-    s16 wallDYaw;
-    s32 oldWallDYaw;
+static const struct ActorShape sMarioShapes[] = {
+    [MOVE_GROUND] = { 50.0f, 100.0f, 100.0f, 160.0f },
+    [MOVE_AIR]    = { 50.0f,  50.0f, 110.0f, 160.0f },
+    [MOVE_SWIM]   = { 110.0f, 80.0f,  80.0f, 160.0f },
+};
 
-    resolve_and_return_wall_collisions(nextPos, 30.0f, 24.0f, &lowerWall);
-    resolve_and_return_wall_collisions(nextPos, 60.0f, 50.0f, &upperWall);
+void resolve_mario_ground_walls(Vec3f pos) {
+    const struct ActorShape *shape = &sMarioShapes[MOVE_GROUND];
+    resolve_wall_sphere(pos, gVec3fY, shape->lowerOffset, shape->radius, 1.0f, NULL);
+}
 
-    f32 floorHeight = find_floor(nextPos[0], nextPos[1], nextPos[2], &floor);
-    f32 ceilHeight = find_mario_ceil(nextPos, floorHeight, &ceil);
+struct MarioSweep {
+    Vec3f pos;
+    struct SurfaceContact wall, floor, ceil;
+    s32 atBoundary;
+};
 
-    f32 waterLevel = find_water_level(nextPos[0], nextPos[2]);
+static s32 clamp_to_level(Vec3f pos) {
+    if (!is_outside_level_bounds(pos[0], pos[2])) return FALSE;
+    f32 limit = LEVEL_BOUNDARY_MAX - 1.0f;
+    pos[0] = CLAMP(pos[0], -limit, limit);
+    pos[2] = CLAMP(pos[2], -limit, limit);
+    return TRUE;
+}
 
-    if (floor == NULL) {
-        return GROUND_STEP_HIT_WALL_STOP_QSTEPS;
-    }
+static void sweep_mario(struct MarioState *m, enum MarioMovement mode, const Vec3f displacement, struct MarioSweep *result) {
+    const struct ActorShape *shape = &sMarioShapes[mode];
+    Vec3f move, end;
+    vec3_copy(move, displacement);
+    vec3_copy(result->pos, m->pos);
+    result->floor.surface = result->ceil.surface = result->wall.surface = NULL;
+    result->atBoundary = FALSE;
 
-    if ((m->action & ACT_FLAG_RIDING_SHELL) && floorHeight < waterLevel) {
-        floorHeight = waterLevel;
-        floor = &gWaterSurfacePseudoFloor;
-        floor->originOffset = -floorHeight;
-    }
+    // Only cast again when a contact leaves motion to slide along another face.
+    for (s32 i = 0; i < 3 && vec3_sumsq(move) > 0.000001f; i++) {
+        struct SweepHit hit;
+        vec3_sum(end, result->pos, move);
+        if (clamp_to_level(end)) {
+            result->atBoundary = TRUE;
+            vec3_diff(move, end, result->pos);
+        }
+        if (!sweep_actor(result->pos, move, gVec3fY, shape, &hit)) {
+            vec3_copy(result->pos, end);
+            break;
+        }
+        for (s32 axis = 0; axis < 3; axis++) result->pos[axis] += move[axis] * hit.time;
+        vec3_scale(move, 1.0f - hit.time);
+        f32 inward = MIN(vec3_dot(move, hit.normal), 0.0f);
 
-    if (nextPos[1] > floorHeight + 100.0f) {
-        if (nextPos[1] + 160.0f >= ceilHeight) {
-            return GROUND_STEP_HIT_WALL_STOP_QSTEPS;
+        s32 wall = absf(hit.face.normal.y) <= WALL_MAX_UP;
+        if (!wall) {
+            if (hit.face.normal.y > 0.0f) result->floor = hit.face;
+            else result->ceil = hit.face;
+            if (mode == MOVE_AIR) break;
+        } else if (mode == MOVE_SWIM || (absf(hit.face.normal.y) <= WALL_KICK_MAX_UP
+                                      && absf(hit.normal[1]) <= WALL_KICK_MAX_UP)) {
+            result->wall = hit.face;
         }
 
-        vec3f_copy(m->pos, nextPos);
-        set_mario_floor(m, floor, floorHeight);
-        return GROUND_STEP_LEFT_GROUND;
-    }
-
-    if (floorHeight + 160.0f >= ceilHeight) {
-        return GROUND_STEP_HIT_WALL_STOP_QSTEPS;
-    }
-
-    vec3f_set(m->pos, nextPos[0], floorHeight, nextPos[2]);
-
-    set_mario_floor(m, floor, floorHeight);
-
-    if (m->wall != NULL) {
-        oldWallDYaw = abs_angle_diff(m->wallYaw, m->faceAngle[1]);
-    } else {
-        oldWallDYaw = 0x0;
-    }
-    for (i = 0; i < upperWall.numWalls; i++) {
-        wallDYaw = abs_angle_diff(SURFACE_YAW(upperWall.walls[i]), m->faceAngle[1]);
-        if (wallDYaw > oldWallDYaw) {
-            oldWallDYaw = wallDYaw;
-            set_mario_wall(m, upperWall.walls[i]);
+        f32 up = hit.normal[1];
+        f32 lateralSq = sqr(hit.normal[0]) + sqr(hit.normal[2]);
+        // Walk along upward-facing contacts, including the rounded lip of an obstacle.
+        // Against a wall, keep the vertical component of the movement.
+        if (!wall || (mode == MOVE_GROUND && up > WALL_MAX_UP)) {
+            vec3_set(hit.normal, 0.0f, 1.0f / up, 0.0f);
+        } else if (lateralSq > 0.25f) {
+            hit.normal[1] = 0.0f;
+            vec3_scale(hit.normal, 1.0f / lateralSq);
         }
-
-        if (wallDYaw >= DEGREES(60) && wallDYaw <= DEGREES(120)) {
-            continue;
+        f32 push = wall ? hit.depth + 0.02f : 0.0f;
+        for (s32 axis = 0; axis < 3; axis++) {
+            result->pos[axis] += hit.normal[axis] * push;
+            move[axis] -= hit.normal[axis] * inward;
         }
-
-        return GROUND_STEP_HIT_WALL_CONTINUE_QSTEPS;
+        result->atBoundary |= clamp_to_level(result->pos);
     }
+}
 
-    return GROUND_STEP_NONE;
+static f32 find_step_floor(struct MarioState *m, Vec3f pos, struct SurfaceContact *floor) {
+    f32 height = find_floor_hit(pos[0], pos[1], pos[2], floor);
+    if (m->action & ACT_FLAG_RIDING_SHELL) {
+        f32 water = find_water_level(pos[0], pos[2]);
+        if (water > height) {
+            get_shell_water_floor(water, floor);
+            return water;
+        }
+    }
+    return height;
 }
 
 s32 perform_ground_step(struct MarioState *m) {
-    s32 i;
-    u32 stepResult;
-    Vec3f intendedPos;
-    const f32 numSteps = 4.0f;
+    struct MarioSweep step;
+    const struct Normal *n = &m->floorNormal;
+    Vec3f move = { n->y * m->vel[0], -(n->x * m->vel[0] + n->z * m->vel[2]), n->y * m->vel[2] };
+    sweep_mario(m, MOVE_GROUND, move, &step);
+    set_mario_wall(m, &step.wall);
 
-    set_mario_wall(m, NULL);
-
-    for (i = 0; i < 4; i++) {
-        intendedPos[0] = m->pos[0] + m->floor->normal.y * (m->vel[0] / numSteps);
-        intendedPos[2] = m->pos[2] + m->floor->normal.y * (m->vel[2] / numSteps);
-        intendedPos[1] = m->pos[1];
-
-        stepResult = perform_ground_quarter_step(m, intendedPos);
-        if (stepResult == GROUND_STEP_LEFT_GROUND || stepResult == GROUND_STEP_HIT_WALL_STOP_QSTEPS) {
-            break;
+    struct SurfaceContact floor, ceil;
+    f32 floorHeight = find_step_floor(m, step.pos, &floor);
+    s32 leftGround = floor.surface == NULL || step.pos[1] > floorHeight + 100.0f;
+    f32 height = leftGround ? step.pos[1] : floorHeight;
+    f32 ceilHeight = find_actor_ceil(step.pos, floorHeight, sMarioShapes[MOVE_GROUND].height, &ceil);
+    s32 result = GROUND_STEP_NONE;
+    if (ceil.surface != NULL && height + sMarioShapes[MOVE_GROUND].height > ceilHeight) {
+        result = GROUND_STEP_HIT_WALL;
+    } else {
+        step.pos[1] = height;
+        vec3_copy(m->pos, step.pos);
+        set_mario_floor(m, &floor, floorHeight);
+        if (leftGround) {
+            result = GROUND_STEP_LEFT_GROUND;
+        } else if (step.atBoundary || step.ceil.surface != NULL) {
+            result = GROUND_STEP_HIT_WALL;
+        } else if (m->hasWall) {
+            s16 difference = abs_angle_diff(m->wallYaw, m->faceAngle[1]);
+            if (difference < DEGREES(60) || difference > DEGREES(120)) result = GROUND_STEP_HIT_WALL;
         }
     }
-
     m->terrainSoundAddend = mario_get_terrain_sound_addend(m);
     vec3f_copy(m->marioObj->header.gfx.pos, m->pos);
     vec3s_set(m->marioObj->header.gfx.angle, 0, m->faceAngle[1], 0);
-
-    if (stepResult == GROUND_STEP_HIT_WALL_CONTINUE_QSTEPS) {
-        stepResult = GROUND_STEP_HIT_WALL;
-    }
-    return stepResult;
-}
-
-// Horizontal dot product of surface normal
-#define hdot_surf(surf, vec) (((surf)->normal.x * (vec)[0]) + ((surf)->normal.z * (vec)[2]))
-
-struct Surface *check_ledge_grab(struct MarioState *m, struct Surface *prevWall, struct Surface *wall, Vec3f intendedPos, Vec3f nextPos, Vec3f ledgePos, struct Surface **ledgeFloor) {
-    struct Surface *returnedWall = wall;
-    if (m->vel[1] > 0.0f || wall == NULL) {
-        return NULL;
-    }
-
-    if (prevWall == NULL) {
-        prevWall = wall;
-    }
-
-    // Return the already grabbed wall if Mario is moving into it more than the newly tested wall.
-    if (hdot_surf(prevWall, m->vel) < hdot_surf(wall, m->vel)) {
-        returnedWall = prevWall;
-    }
-
-    // Only ledge grab if the wall displaced Mario in the opposite direction of his velocity.
-    // hdot(displacement, vel).
-    if (
-        ((nextPos[0] - intendedPos[0]) * m->vel[0]) + ((nextPos[2] - intendedPos[2]) * m->vel[2]) > 0.0f
-    ) {
-        returnedWall = prevWall;
-    }
-
-    ledgePos[0] = nextPos[0] - (wall->normal.x * 60.0f);
-    ledgePos[2] = nextPos[2] - (wall->normal.z * 60.0f);
-    ledgePos[1] = find_floor(ledgePos[0], nextPos[1] + 160.0f, ledgePos[2], ledgeFloor);
-
-    if (ledgeFloor == NULL
-        || (*ledgeFloor) == NULL
-        || ledgePos[1] < nextPos[1] + 100.0f
-#ifdef DONT_LEDGE_GRAB_STEEP_SLOPES
-        || (*ledgeFloor)->normal.y < COS25 // HACKERSM64_DO: check if floor is actually slippery
-#endif
-    ) {
-        return NULL;
-    }
-
-    return returnedWall;
-}
-
-#undef hdot_surf
-
-s32 bonk_or_hit_lava_wall(struct MarioState *m, struct WallCollisionData *wallData) {
-    s16 i;
-    s16 wallDYaw;
-    s32 oldWallDYaw;
-    s32 result = AIR_STEP_NONE;
-
-    if (m->wall != NULL) {
-        oldWallDYaw = abs_angle_diff(m->wallYaw, m->faceAngle[1]);
-    } else {
-        oldWallDYaw = 0x0;
-    }
-
-    for (i = 0; i < wallData->numWalls; i++) {
-        if (wallData->walls[i] != NULL) {
-            if (wallData->walls[i]->type == SURFACE_BURNING) {
-                set_mario_wall(m, wallData->walls[i]);
-                return AIR_STEP_HIT_LAVA_WALL;
-            }
-
-            // Update wall reference (bonked wall) only if the new wall has a better facing angle
-            wallDYaw = abs_angle_diff(SURFACE_YAW(wallData->walls[i]), m->faceAngle[1]);
-            if (wallDYaw > oldWallDYaw) {
-                oldWallDYaw = wallDYaw;
-                set_mario_wall(m, wallData->walls[i]);
-
-                if (wallDYaw > DEGREES(180 - WALL_KICK_DEGREES)) {
-                    m->flags |= MARIO_AIR_HIT_WALL;
-                    result = AIR_STEP_HIT_WALL;
-                }
-            }
-        }
-    }
-
     return result;
 }
 
-s32 perform_air_quarter_step(struct MarioState *m, Vec3f intendedPos, u32 stepArg) {
-    s16 i;
-    s32 stepResult = AIR_STEP_NONE;
+static s32 try_ledge_grab(struct MarioState *m, const struct SurfaceContact *wall) {
+    if (m->vel[1] > 0.0f || wall->normal.x * m->vel[0] + wall->normal.z * m->vel[2] > 0.0f) return FALSE;
+    static const Vec3f down = { 0.0f, -1.0f, 0.0f };
+    Vec3f reach = { -wall->normal.x, 0.0f, -wall->normal.z };
+    Vec3f ledge = { m->pos[0] + reach[0] * 60.0f, m->pos[1] + sMarioShapes[MOVE_AIR].height,
+                    m->pos[2] + reach[2] * 60.0f };
+    if (is_outside_level_bounds(ledge[0], ledge[2])) return FALSE;
+    struct SurfaceContact floor;
+    f32 distance = collision_raycast(ledge, down, 60.0f, WALL_MAX_UP, 0, &floor);
+    if (distance < 0.0f) return FALSE;
+#ifdef DONT_LEDGE_GRAB_STEEP_SLOPES
+    if (floor.normal.y < COS25) return FALSE;
+#endif
+    ledge[1] -= distance;
+    Vec3f hands = { m->pos[0], ledge[1] + 3.0f, m->pos[2] };
+    if (collision_raycast(hands, reach, 60.0f, 0.0f, 0, NULL) >= 0.0f) return FALSE;
+    vec3_copy(m->pos, ledge);
+    set_mario_floor(m, &floor, ledge[1]);
+    m->faceAngle[0] = 0;
+    m->faceAngle[1] = SURFACE_YAW(wall) + 0x8000;
+    return TRUE;
+}
 
-    Vec3f nextPos, ledgePos;
-    struct WallCollisionData upperWall, lowerWall;
-    struct Surface *ceil, *floor, *ledgeFloor;
-    struct Surface *grabbedWall = NULL;
-
-    vec3f_copy(nextPos, intendedPos);
-
-    resolve_and_return_wall_collisions(nextPos, 150.0f, 50.0f, &upperWall);
-    resolve_and_return_wall_collisions(nextPos, 30.0f, 50.0f, &lowerWall);
-
-    f32 floorHeight = find_floor(nextPos[0], nextPos[1], nextPos[2], &floor);
-    f32 ceilHeight = find_mario_ceil(nextPos, floorHeight, &ceil);
-
-    f32 waterLevel = find_water_level(nextPos[0], nextPos[2]);
-
-    //! The water pseudo floor is not referenced when your intended qstep is
-    // out of bounds, so it won't detect you as landing.
-
-    if (floor == NULL) {
-        if (nextPos[1] <= m->floorHeight) {
-            m->pos[1] = m->floorHeight;
-            return AIR_STEP_LANDED;
-        }
-
-        m->pos[1] = nextPos[1];
-        return AIR_STEP_HIT_WALL;
-    }
-
-    if ((m->action & ACT_FLAG_RIDING_SHELL) && floorHeight < waterLevel) {
-        floorHeight = waterLevel;
-        floor = &gWaterSurfacePseudoFloor;
-        floor->originOffset = -floorHeight;
-    }
-
-    //! This check uses f32, but findFloor uses short (overflow jumps)
-    if (nextPos[1] <= floorHeight) {
-        if (ceilHeight - floorHeight > 160.0f) {
-            m->pos[0] = nextPos[0];
-            m->pos[2] = nextPos[2];
-            set_mario_floor(m, floor, floorHeight);
-        }
-
-        //! When ceilHeight - floorHeight <= 160, the step result says that
-        // Mario landed, but his movement is cancelled and his referenced floor
-        // isn't updated (pedro spots)
-        m->pos[1] = floorHeight;
+static s32 move_mario_in_air(struct MarioState *m, u32 stepArg) {
+    struct MarioSweep step;
+    sweep_mario(m, MOVE_AIR, m->vel, &step);
+    vec3_copy(m->pos, step.pos);
+    set_mario_wall(m, &step.wall);
+    if (step.floor.surface != NULL) {
+        set_mario_floor(m, &step.floor, m->pos[1]);
         return AIR_STEP_LANDED;
     }
 
-    if (nextPos[1] + 160.0f > ceilHeight) {
-        if (m->vel[1] >= 0.0f) {
-            m->vel[1] = 0.0f;
-
+    struct SurfaceContact floor;
+    f32 floorHeight = find_step_floor(m, m->pos, &floor);
+    set_mario_floor(m, &floor, floorHeight);
+    if (floor.surface != NULL && m->vel[1] <= 0.0f && m->pos[1] <= floorHeight) {
+        m->pos[1] = floorHeight;
+        return AIR_STEP_LANDED;
+    }
+    if (step.ceil.surface != NULL) {
+        set_mario_ceil(m, step.ceil.surface, m->pos[1] + sMarioShapes[MOVE_AIR].height);
+        if (m->vel[1] < 0.0f) return AIR_STEP_HIT_CEILING;
+        m->vel[1] = 0.0f;
 #ifdef HANGING_FIX
-            // Grab ceiling unless they just were grabbing a ceiling
-            if (!(m->prevAction & ACT_FLAG_HANGING) && ceil != NULL && ceil->type == SURFACE_HANGABLE) {
+        if (!(m->prevAction & ACT_FLAG_HANGING) && step.ceil.type == SURFACE_HANGABLE) return AIR_STEP_GRABBED_CEILING;
 #else
-            if ((stepArg & AIR_STEP_CHECK_HANG) && ceil != NULL && ceil->type == SURFACE_HANGABLE) {
+        if ((stepArg & AIR_STEP_CHECK_HANG) && step.ceil.type == SURFACE_HANGABLE) return AIR_STEP_GRABBED_CEILING;
 #endif
-                return AIR_STEP_GRABBED_CEILING;
-            }
-
-            return AIR_STEP_NONE;
-        }
-
-        //! Potential subframe downwarp->upwarp?
-        if (nextPos[1] <= m->floorHeight) {
-            m->pos[1] = m->floorHeight;
-            return AIR_STEP_LANDED;
-        }
-
-        m->pos[1] = nextPos[1];
-        return AIR_STEP_HIT_CEILING;
     }
-
-    //! When the wall is not completely vertical or there is a slight wall
-    // misalignment, you can activate these conditions in unexpected situations
-
-    if ((stepArg & AIR_STEP_CHECK_LEDGE_GRAB) && upperWall.numWalls == 0 && lowerWall.numWalls != 0) {
-        for (i = 0; i < lowerWall.numWalls; i++) {
-            grabbedWall = check_ledge_grab(m, grabbedWall, lowerWall.walls[i], intendedPos, nextPos, ledgePos, &ledgeFloor);
-            if (grabbedWall != NULL) {
-                stepResult = AIR_STEP_GRABBED_LEDGE;
-            }
-        }
-
-        if (stepResult == AIR_STEP_GRABBED_LEDGE && grabbedWall != NULL && ledgeFloor != NULL) {
-            vec3f_copy(m->pos, ledgePos);
-            set_mario_floor(m, floor, ledgePos[1]);
-            m->faceAngle[0] = 0x0;
-            m->faceAngle[1] = SURFACE_YAW(grabbedWall) + 0x8000;
-        } else {
-            vec3f_copy(m->pos, nextPos);
-            set_mario_floor(m, floor, floorHeight);
-        }
-        return stepResult;
-    }
-
-    vec3f_copy(m->pos, nextPos);
-    set_mario_floor(m, floor, floorHeight);
-
-    if (upperWall.numWalls > 0) {
-        stepResult  = bonk_or_hit_lava_wall(m, &upperWall);
-        if (stepResult != AIR_STEP_NONE) {
-            return stepResult;
+    if (m->hasWall) {
+        if ((stepArg & AIR_STEP_CHECK_LEDGE_GRAB) && try_ledge_grab(m, &step.wall)) return AIR_STEP_GRABBED_LEDGE;
+        if (step.wall.type == SURFACE_BURNING) return AIR_STEP_HIT_LAVA_WALL;
+        if (abs_angle_diff(m->wallYaw, m->faceAngle[1]) > DEGREES(180 - WALL_KICK_DEGREES)) {
+            m->flags |= MARIO_AIR_HIT_WALL;
+            return AIR_STEP_HIT_WALL;
         }
     }
+    return AIR_STEP_NONE;
+}
 
-    return (lowerWall.numWalls > 0) ? bonk_or_hit_lava_wall(m, &lowerWall) : AIR_STEP_NONE;
+s32 move_mario_in_water(struct MarioState *m, const Vec3f move) {
+    struct MarioSweep step;
+    struct SurfaceContact floor, ceil;
+    f32 height = sMarioShapes[MOVE_SWIM].height;
+    sweep_mario(m, MOVE_SWIM, move, &step);
+    f32 floorHeight = find_step_floor(m, step.pos, &floor);
+    f32 ceilHeight = find_actor_ceil(step.pos, floorHeight, height, &ceil);
+    if (floor.surface != NULL && ceil.surface != NULL && ceilHeight - floorHeight < height) return WATER_STEP_CANCELLED;
+
+    s32 result = WATER_STEP_NONE;
+    if (floor.surface != NULL && step.pos[1] < floorHeight) {
+        step.pos[1] = floorHeight;
+        result = WATER_STEP_HIT_FLOOR;
+    } else if (ceil.surface != NULL && step.pos[1] + height > ceilHeight) {
+        step.pos[1] = ceilHeight - height;
+        result = WATER_STEP_HIT_CEILING;
+    } else if (step.floor.surface != NULL) {
+        result = WATER_STEP_HIT_FLOOR;
+    } else if (step.ceil.surface != NULL) {
+        result = WATER_STEP_HIT_CEILING;
+    } else if (step.wall.surface != NULL) {
+        result = WATER_STEP_HIT_WALL;
+    } else if (step.atBoundary) {
+        result = WATER_STEP_CANCELLED;
+    }
+    set_mario_floor(m, &floor, floorHeight);
+    vec3_copy(m->pos, step.pos);
+    return result;
 }
 
 void apply_twirl_gravity(struct MarioState *m) {
@@ -657,7 +570,7 @@ void apply_vertical_wind(struct MarioState *m) {
     if (m->action != ACT_GROUND_POUND) {
         f32 offsetY = m->pos[1] - -1500.0f;
 
-        if (m->floor->type == SURFACE_VERTICAL_WIND && -3000.0f < offsetY && offsetY < 2000.0f) {
+        if (m->floorType == SURFACE_VERTICAL_WIND && -3000.0f < offsetY && offsetY < 2000.0f) {
             if (offsetY >= 0.0f) {
                 maxVelY = 10000.0f / (offsetY + 200.0f);
             } else {
@@ -674,31 +587,7 @@ void apply_vertical_wind(struct MarioState *m) {
 }
 
 s32 perform_air_step(struct MarioState *m, u32 stepArg) {
-    Vec3f intendedPos;
-    const f32 numSteps = 4.0f;
-    s32 i;
-    s32 quarterStepResult;
-    s32 stepResult = AIR_STEP_NONE;
-
-    set_mario_wall(m, NULL);
-
-    for (i = 0; i < 4; i++) {
-        intendedPos[0] = m->pos[0] + m->vel[0] / numSteps;
-        intendedPos[1] = m->pos[1] + m->vel[1] / numSteps;
-        intendedPos[2] = m->pos[2] + m->vel[2] / numSteps;
-
-        quarterStepResult = perform_air_quarter_step(m, intendedPos, stepArg);
-
-        if (quarterStepResult != AIR_STEP_NONE) {
-            stepResult = quarterStepResult;
-        }
-
-        if (quarterStepResult == AIR_STEP_LANDED || quarterStepResult == AIR_STEP_GRABBED_LEDGE
-            || quarterStepResult == AIR_STEP_GRABBED_CEILING
-            || quarterStepResult == AIR_STEP_HIT_LAVA_WALL) {
-            break;
-        }
-    }
+    s32 stepResult = move_mario_in_air(m, stepArg);
 
     if (m->vel[1] >= 0.0f) {
         m->peakHeight = m->pos[1];

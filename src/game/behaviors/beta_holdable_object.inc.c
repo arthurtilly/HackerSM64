@@ -8,16 +8,6 @@
  */
 
 /**
- * Initialization function for bhvBetaHoldableObject.
- * Just sets various physics constants for the object.
- */
-void bhv_beta_holdable_object_init(void) {
-    o->oGravity = 2.5f;
-    o->oFriction = 0.8f;
-    o->oBuoyancy = 1.3f;
-}
-
-/**
  * Drop the object.
  */
 static void beta_holdable_object_drop(void) {
@@ -56,8 +46,8 @@ static void beta_holdable_object_throw(void) {
 void bhv_beta_holdable_object_loop(void) {
     switch (o->oHeldState) {
         case HELD_FREE:
-            // Apply standard physics
-            object_step();
+            cur_obj_update_floor_and_bounce_off_walls();
+            cur_obj_move_standard(60);
             break;
 
         case HELD_HELD:

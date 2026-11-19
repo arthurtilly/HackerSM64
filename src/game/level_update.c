@@ -365,9 +365,8 @@ void init_mario_after_warp(void) {
         gPlayerSpawnInfos[0].startAngle[2] = 0;
         
         struct Surface *floor;
-        gMarioState->lastSafePos[0] = object->oPosX;
-        gMarioState->lastSafePos[1] = find_floor(object->oPosX, object->oPosY, object->oPosZ, &floor);
-        gMarioState->lastSafePos[2] = object->oPosZ;
+        f32 floorHeight = find_floor(object->oPosX, object->oPosY, object->oPosZ, &floor);
+        vec3f_set(gMarioState->lastSafePos, object->oPosX, floor != NULL ? floorHeight : object->oPosY, object->oPosZ);
 
         if (marioSpawnType == MARIO_SPAWN_DOOR_WARP) {
             init_door_warp(&gPlayerSpawnInfos[0], sWarpDest.arg);
@@ -658,7 +657,7 @@ void initiate_warp(s16 destLevel, s16 destArea, s16 destWarpNode, s32 warpFlags)
  */
 struct WarpNode *get_painting_warp_node(void) {
     struct WarpNode *warpNode = NULL;
-    s32 paintingIndex = gMarioState->floor->type - SURFACE_PAINTING_WARP_D3;
+    s32 paintingIndex = gMarioState->floorType - SURFACE_PAINTING_WARP_D3;
 
     if (paintingIndex >= PAINTING_WARP_INDEX_START && paintingIndex < PAINTING_WARP_INDEX_END) {
         if (paintingIndex < PAINTING_WARP_INDEX_FA

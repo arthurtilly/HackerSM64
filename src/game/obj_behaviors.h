@@ -7,41 +7,25 @@
 #include "macros.h"
 #include "types.h"
 
-enum ObjCollisionFlags {
-    OBJ_COL_FLAGS_NONE      = (0 << 0),
-    OBJ_COL_FLAG_GROUNDED   = (1 << 0),
-    OBJ_COL_FLAG_HIT_WALL   = (1 << 1),
-    OBJ_COL_FLAG_UNDERWATER = (1 << 2),
-    OBJ_COL_FLAG_NO_Y_VEL   = (1 << 3),
-    OBJ_COL_FLAGS_LANDED    = (OBJ_COL_FLAG_GROUNDED | OBJ_COL_FLAG_NO_Y_VEL)
-};
-
 //! Lots of these are duplicates
 void set_yoshi_as_not_dead(void);
 s32 obj_flicker_and_disappear(struct Object *obj, s16 lifeSpan);
-s32 coin_step(s16 *collisionFlagsPtr);
 void moving_coin_flicker(void);
 void coin_collected(void);
-void bhv_moving_yellow_coin_init(void);
 void bhv_moving_yellow_coin_loop(void);
-void bhv_moving_blue_coin_init(void);
 void bhv_moving_blue_coin_loop(void);
-void bhv_blue_coin_sliding_jumping_init(void);
 void blue_coin_sliding_away_from_mario(void); /* likely unused */
 void blue_coin_sliding_slow_down(void); /* likely unused */
 void bhv_blue_coin_sliding_loop(void); /* likely unused */
 void bhv_blue_coin_jumping_loop(void); /* likely unused */
 void bhv_seaweed_init(void);
 void bhv_seaweed_bundle_init(void);
-void bhv_bobomb_init(void);
 void bobomb_spawn_coin(void);
 void bobomb_act_explode(void);
 void bobomb_check_interactions(void);
 void bobomb_act_patrol(void);
 void bobomb_act_chase_mario(void);
 void bobomb_act_launched(void);
-void generic_bobomb_free_loop(void);
-void stationary_bobomb_free_loop(void);
 void bobomb_free_loop(void);
 void bobomb_held_loop(void);
 void bobomb_dropped_loop(void);
@@ -49,7 +33,6 @@ void bobomb_thrown_loop(void);
 void curr_obj_random_blink(s32 *blinkTimer);
 void bhv_bobomb_loop(void);
 void bhv_bobomb_fuse_smoke_init(void);
-void bhv_bobomb_buddy_init(void);
 void bobomb_buddy_act_idle(void);
 void bobomb_buddy_cannon_dialog(s16 dialogFirstText, s16 dialogSecondText);
 void bobomb_buddy_act_talk(void);
@@ -86,12 +69,7 @@ void hoot_action_loop(void);
 void hoot_turn_to_home(void);
 void hoot_awake_loop(void);
 void bhv_hoot_loop(void);
-void bhv_beta_holdable_object_init(void); /* unused */
 void bhv_beta_holdable_object_loop(void); /* unused */
-void bhv_object_bubble_init(void);
-void bhv_object_bubble_loop(void);
-void bhv_object_water_wave_init(void);
-void bhv_object_water_wave_loop(void);
 void bhv_explosion_init(void);
 void bhv_explosion_loop(void);
 void bhv_bobomb_bully_death_smoke_init(void);
@@ -105,7 +83,6 @@ void bully_check_mario_collision(void);
 void bully_act_chase_mario(void);
 void bully_act_knockback(void);
 void bully_act_back_up(void);
-void bully_backup_check(s16 collisionFlags);
 void bully_play_stomping_sound(void);
 void bully_step(void);
 void bully_spawn_coin(void);
@@ -146,16 +123,13 @@ void bhv_large_bomp_init(void);
 void bhv_large_bomp_loop(void);
 void bhv_wf_sliding_platform_init(void);
 void bhv_wf_sliding_platform_loop(void);
-void bhv_moneybag_init(void);
 void moneybag_check_mario_collision(void);
-void moneybag_jump(s16 collisionFlags);
 void moneybag_act_move_around(void);
 void moneybag_act_return_home(void);
 void moneybag_act_disappear(void);
 void moneybag_act_death(void);
 void bhv_moneybag_loop(void);
 void bhv_moneybag_hidden_loop(void);
-void bhv_bowling_ball_init(void);
 void bowling_ball_set_hitbox(void);
 void bowling_ball_set_waypoints(void);
 void bhv_bowling_ball_roll_loop(void);
@@ -164,9 +138,7 @@ void bhv_bowling_ball_loop(void);
 void bhv_generic_bowling_ball_spawner_init(void);
 void bhv_generic_bowling_ball_spawner_loop(void);
 void bhv_thi_bowling_ball_spawner_loop(void);
-void bhv_bob_pit_bowling_ball_init(void);
 void bhv_bob_pit_bowling_ball_loop(void);
-void bhv_free_bowling_ball_init(void); /* likely unused */
 void bhv_free_bowling_ball_roll_loop(void); /* likely unused */
 void bhv_free_bowling_ball_loop(void); /* likely unused */
 void bhv_rr_cruiser_wing_init(void);

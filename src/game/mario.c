@@ -391,7 +391,7 @@ s32 mario_get_floor_class(struct MarioState *m) {
     }
 
     if (m->floor != NULL) {
-        switch (m->floor->type) {
+        switch (m->floorType) {
             case SURFACE_NOT_SLIPPERY:
             case SURFACE_HARD_NOT_SLIPPERY:
             case SURFACE_SWITCH:
@@ -419,7 +419,7 @@ s32 mario_get_floor_class(struct MarioState *m) {
     }
 
     // Crawling allows Mario to not slide on certain steeper surfaces.
-    if (m->action == ACT_CRAWLING && m->floor->normal.y > 0.5f && floorClass == SURFACE_CLASS_DEFAULT) {
+    if (m->action == ACT_CRAWLING && m->floorNormal.y > 0.5f && floorClass == SURFACE_CLASS_DEFAULT) {
         floorClass = SURFACE_CLASS_NOT_SLIPPERY;
     }
 
@@ -458,7 +458,7 @@ u32 mario_get_terrain_sound_addend(struct MarioState *m) {
     s32 floorType;
 
     if (m->floor != NULL) {
-        floorType = m->floor->type;
+        floorType = m->floorType;
 
         if ((gCurrLevelNum != LEVEL_LLL) && (m->floorHeight < (m->waterLevel - 10))) {
             // Water terrain sound, excluding LLL since it uses water in the volcano.
@@ -516,7 +516,7 @@ u32 mario_get_terrain_sound_addend(struct MarioState *m) {
  */
 s32 mario_facing_downhill(struct MarioState *m, s32 turnYaw) {
     // Forces Mario to do a belly slide rather than a butt slide when on a super slippery floor, no matter his angle, so that the player can't jump.
-    if (m->floor && m->floor->type == SURFACE_SUPER_SLIPPERY)
+    if (m->floorType == SURFACE_SUPER_SLIPPERY)
         return FALSE;
 
     s16 faceAngleYaw = m->faceAngle[1];
@@ -538,7 +538,7 @@ s32 mario_facing_downhill(struct MarioState *m, s32 turnYaw) {
 u32 mario_floor_is_slippery(struct MarioState *m) {
     f32 normY;
 
-    if (((m->area->terrainType & TERRAIN_MASK) == TERRAIN_SLIDE  && m->floor->normal.y < COS1) || (m->floor->type == SURFACE_SUPER_SLIPPERY)) {
+    if (((m->area->terrainType & TERRAIN_MASK) == TERRAIN_SLIDE  && m->floorNormal.y < COS1) || (m->floorType == SURFACE_SUPER_SLIPPERY)) {
         return TRUE;
     }
 
@@ -549,7 +549,7 @@ u32 mario_floor_is_slippery(struct MarioState *m) {
         case SURFACE_CLASS_NOT_SLIPPERY:  normY = 0.0f;  break;
     }
 
-    return m->floor->normal.y <= normY;
+    return m->floorNormal.y <= normY;
 }
 
 /**
@@ -559,7 +559,7 @@ s32 mario_floor_is_slope(struct MarioState *m) {
     f32 normY;
 
     if (((m->area->terrainType & TERRAIN_MASK) == TERRAIN_SLIDE
-        && m->floor->normal.y < COS1) || (m->floor->type == SURFACE_SUPER_SLIPPERY)) {
+        && m->floorNormal.y < COS1) || (m->floorType == SURFACE_SUPER_SLIPPERY)) {
         return TRUE;
     }
 
@@ -570,7 +570,7 @@ s32 mario_floor_is_slope(struct MarioState *m) {
         case SURFACE_CLASS_NOT_SLIPPERY:  normY = COS20; break;
     }
 
-    return m->floor->normal.y <= normY;
+    return m->floorNormal.y <= normY;
 }
 
 /**
@@ -578,11 +578,11 @@ s32 mario_floor_is_slope(struct MarioState *m) {
  */
 s32 mario_floor_is_steep(struct MarioState *m) {
     f32 normY;
-    if (m->floor->type == SURFACE_SUPER_SLIPPERY)
+    if (m->floorType == SURFACE_SUPER_SLIPPERY)
         return TRUE;
 
 #ifdef JUMP_KICK_FIX
-    if (m->floor->type == SURFACE_NOT_SLIPPERY) {
+    if (m->floorType == SURFACE_NOT_SLIPPERY) {
         return FALSE;
     }
 #endif
@@ -599,7 +599,7 @@ s32 mario_floor_is_steep(struct MarioState *m) {
             case SURFACE_CLASS_NOT_SLIPPERY:  normY = COS30; break;
         }
 
-        return m->floor->normal.y <= normY;
+        return m->floorNormal.y <= normY;
     }
 
     return FALSE;
@@ -609,78 +609,46 @@ s32 mario_floor_is_steep(struct MarioState *m) {
  * Finds the floor height relative from Mario given polar displacement.
  */
 f32 find_floor_height_relative_polar(struct MarioState *m, s16 angleFromMario, f32 distFromMario) {
-    struct Surface *floor;
-
     f32 y = sins(m->faceAngle[1] + angleFromMario) * distFromMario;
     f32 x = coss(m->faceAngle[1] + angleFromMario) * distFromMario;
 
-    return find_floor(m->pos[0] + y, m->pos[1] + 100.0f, m->pos[2] + x, &floor);
+    return find_floor_height(m->pos[0] + y, m->pos[1] + 100.0f, m->pos[2] + x);
 }
 
 /**
- * Returns the slope of the floor based off points around Mario.
+ * Returns the pitch of the support plane in the given direction.
  */
 s16 find_floor_slope(struct MarioState *m, s16 yawOffset) {
-    struct Surface *floor = m->floor;
-    f32 forwardFloorY, backwardFloorY;
-    f32 forwardYDelta, backwardYDelta;
-    s16 result;
-
-    f32 x = sins(m->faceAngle[1] + yawOffset) * 5.0f;
-    f32 z = coss(m->faceAngle[1] + yawOffset) * 5.0f;
-#ifdef FAST_FLOOR_ALIGN
-    if (absf(m->forwardVel) > FAST_FLOOR_ALIGN) {
-        forwardFloorY  = get_surface_height_at_location(m->pos[0] + x, m->pos[2] + z, floor);
-        backwardFloorY = get_surface_height_at_location(m->pos[0] - x, m->pos[2] - z, floor);
-    } else {
-        forwardFloorY  = find_floor(m->pos[0] + x, m->pos[1] + 100.0f, m->pos[2] + z, &floor);
-        if (floor == NULL)  forwardFloorY = m->floorHeight; // handle OOB slopes
-        backwardFloorY = find_floor(m->pos[0] - x, m->pos[1] + 100.0f, m->pos[2] - z, &floor);
-        if (floor == NULL) backwardFloorY = m->floorHeight; // handle OOB slopes
-    }
-#else
-    forwardFloorY  = find_floor(m->pos[0] + x, m->pos[1] + 100.0f, m->pos[2] + z, &floor);
-    if (floor == NULL)  forwardFloorY = m->floorHeight; // handle OOB slopes
-    backwardFloorY = find_floor(m->pos[0] - x, m->pos[1] + 100.0f, m->pos[2] - z, &floor);
-    if (floor == NULL) backwardFloorY = m->floorHeight; // handle OOB slopes
-#endif
-
-    forwardYDelta = forwardFloorY - m->pos[1];
-    backwardYDelta = m->pos[1] - backwardFloorY;
-
-    if (sqr(forwardYDelta) < sqr(backwardYDelta)) {
-        result = atan2s(5.0f, forwardYDelta);
-    } else {
-        result = atan2s(5.0f, backwardYDelta);
-    }
-
-    return result;
+    s16 yaw = m->faceAngle[1] + yawOffset;
+    return atan2s(m->floorNormal.y, -(m->floorNormal.x * sins(yaw) + m->floorNormal.z * coss(yaw)));
 }
 
-Bool32 set_mario_wall(struct MarioState *m, struct Surface *wall) {
-    if (m->wall != wall) {
-        m->wall = wall;
-        if (m->wall != NULL) m->wallYaw = SURFACE_YAW(wall);
-    }
-    return (m->wall != NULL);
+void set_mario_wall(struct MarioState *m, const struct SurfaceContact *wall) {
+    m->hasWall = wall->surface != NULL;
+    if (m->hasWall) m->wallYaw = SURFACE_YAW(wall);
 }
 
 Bool32 set_mario_ceil(struct MarioState *m, struct Surface *ceil, f32 ceilHeight) {
-    if (m->ceil != ceil) {
-        m->ceil = ceil;
-        if (m->ceil != NULL) m->ceilYaw = SURFACE_YAW(ceil);
-    }
+    if (ceil != NULL && (m->ceil != ceil || (ceil->flags & SURFACE_FLAG_DYNAMIC))) m->ceilYaw = SURFACE_YAW(ceil);
+    m->ceil = ceil;
     m->ceilHeight = ceilHeight;
     return (m->ceil != NULL);
 }
 
-Bool32 set_mario_floor(struct MarioState *m, struct Surface *floor, f32 floorHeight) {
-    if (m->floor != floor) {
-        m->floor = floor;
-        if (m->floor != NULL) m->floorYaw = SURFACE_YAW(floor);
+void set_mario_floor(struct MarioState *m, const struct SurfaceContact *floor, f32 height) {
+    m->floorHeight = height;
+    if (floor->surface != NULL) {
+        if (m->floor == NULL || floor->normal.x != m->floorNormal.x || floor->normal.z != m->floorNormal.z) {
+            m->floorYaw = SURFACE_YAW(floor);
+        }
+        m->floorNormal = floor->normal;
+        m->floorType = floor->type;
+    } else {
+        m->floorNormal = (struct Normal){ .y = 1.0f };
+        m->floorYaw = 0;
+        m->floorType = SURFACE_NULL;
     }
-    m->floorHeight = floorHeight;
-    return (m->floor != NULL);
+    m->floor = floor->surface;
 }
 
 /**
@@ -1202,8 +1170,8 @@ void debug_print_speed_action_normal(struct MarioState *m) {
     f32 floor_nY;
 
     if (gShowDebugText) {
-        steepness = sqrtf(sqr(m->floor->normal.x) + sqr(m->floor->normal.z));
-        floor_nY = m->floor->normal.y;
+        steepness = sqrtf(sqr(m->floorNormal.x) + sqr(m->floorNormal.z));
+        floor_nY = m->floorNormal.y;
 
         print_text_fmt_int(210, 88, "ANG %d", (atan2s(floor_nY, steepness) * 180.0f) / 32768.0f);
 
@@ -1268,59 +1236,32 @@ void update_mario_joystick_inputs(struct MarioState *m) {
  * Resolves wall collisions, and updates a variety of inputs.
  */
 void update_mario_geometry_inputs(struct MarioState *m) {
-    f32 gasLevel;
-    f32 ceilToFloorDist;
-
-    f32_find_wall_collision(&m->pos[0], &m->pos[1], &m->pos[2], 60.0f, 50.0f);
-    f32_find_wall_collision(&m->pos[0], &m->pos[1], &m->pos[2], 30.0f, 24.0f);
-
-    m->floorHeight = find_floor(m->pos[0], m->pos[1], m->pos[2], &m->floor);
-
-    // If Mario is OOB, move his position to his graphical position (which was not updated)
-    // and check for the floor there.
-    // This can cause errant behavior when combined with astral projection,
-    // since the graphical position was not Mario's previous location.
-    if (m->floor == NULL) {
-        vec3f_copy(m->pos, m->marioObj->header.gfx.pos);
-        m->floorHeight = find_floor(m->pos[0], m->pos[1], m->pos[2], &m->floor);
-    }
-
-    m->ceilHeight = find_mario_ceil(m->pos, m->floorHeight, &m->ceil);
-    gasLevel = find_poison_gas_level(m->pos[0], m->pos[2]);
+    struct SurfaceContact floor;
+    struct Surface *ceil;
+    resolve_mario_ground_walls(m->pos);
+    f32 floorHeight = find_floor_hit(m->pos[0], m->pos[1], m->pos[2], &floor);
     m->waterLevel = find_water_level(m->pos[0], m->pos[2]);
+    if ((m->action & ACT_FLAG_RIDING_SHELL) && m->waterLevel > floorHeight) {
+        floorHeight = m->waterLevel;
+        get_shell_water_floor(floorHeight, &floor);
+    }
+    set_mario_floor(m, &floor, floorHeight);
+    f32 ceilHeight = find_mario_ceil(m->pos, floorHeight, &ceil);
+    set_mario_ceil(m, ceil, ceilHeight);
+    m->terrainSoundAddend = mario_get_terrain_sound_addend(m);
 
-    if (m->floor != NULL) {
-        m->floorYaw = atan2s(m->floor->normal.z, m->floor->normal.x);
-        m->terrainSoundAddend = mario_get_terrain_sound_addend(m);
-
-        if ((m->pos[1] > m->waterLevel - 40) && mario_floor_is_slippery(m)) {
+    if (floor.surface != NULL) {
+        if (m->pos[1] > m->waterLevel - 40 && mario_floor_is_slippery(m)) {
             m->input |= INPUT_ABOVE_SLIDE;
         }
-
-        if ((m->floor->flags & SURFACE_FLAG_DYNAMIC)
-            || (m->ceil && m->ceil->flags & SURFACE_FLAG_DYNAMIC)) {
-            ceilToFloorDist = m->ceilHeight - m->floorHeight;
-
-            if ((0.0f <= ceilToFloorDist) && (ceilToFloorDist <= 150.0f)) {
-                m->input |= INPUT_SQUISHED;
-            }
+        if (ceil != NULL && ((floor.surface->flags | ceil->flags) & SURFACE_FLAG_DYNAMIC)) {
+            f32 clearance = ceilHeight - floorHeight;
+            if (clearance >= 0.0f && clearance <= 150.0f) m->input |= INPUT_SQUISHED;
         }
-
-        if (m->pos[1] > m->floorHeight + 100.0f) {
-            m->input |= INPUT_OFF_FLOOR;
-        }
-
-        if (m->pos[1] < (m->waterLevel - 10)) {
-            m->input |= INPUT_IN_WATER;
-        }
-
-        if (m->pos[1] < (gasLevel - 100.0f)) {
-            m->input |= INPUT_IN_POISON_GAS;
-        }
-
-    } else {
-        level_trigger_warp(m, WARP_OP_DEATH);
     }
+    if (floor.surface == NULL || m->pos[1] > floorHeight + 100.0f) m->input |= INPUT_OFF_FLOOR;
+    if (m->pos[1] < m->waterLevel - 10) m->input |= INPUT_IN_WATER;
+    if (m->pos[1] < find_poison_gas_level(m->pos[0], m->pos[2]) - 100) m->input |= INPUT_IN_POISON_GAS;
 }
 
 /**
@@ -1739,6 +1680,11 @@ s32 execute_mario_action(UNUSED struct Object *obj) {
 #endif
 
         gMarioState->marioObj->header.gfx.node.flags &= ~GRAPH_RENDER_INVISIBLE;
+        if (is_outside_level_bounds(gMarioState->pos[0], gMarioState->pos[2])
+            || gMarioState->pos[1] < FLOOR_LOWER_LIMIT || gMarioState->pos[1] > CELL_HEIGHT_LIMIT) {
+            level_trigger_warp(gMarioState, WARP_OP_DEATH);
+            return ACTIVE_PARTICLE_NONE;
+        }
         mario_reset_bodystate(gMarioState);
         update_mario_inputs(gMarioState);
 
@@ -1751,9 +1697,14 @@ s32 execute_mario_action(UNUSED struct Object *obj) {
 #endif
         mario_process_interactions(gMarioState);
 
-        // If Mario is OOB, stop executing actions.
         if (gMarioState->floor == NULL) {
-            return ACTIVE_PARTICLE_NONE;
+            u32 group = gMarioState->action & ACT_GROUP_MASK;
+            if (group == ACT_GROUP_STATIONARY || group == ACT_GROUP_MOVING || group == ACT_GROUP_OBJECT) {
+                u32 fallAction = gMarioState->heldObj != NULL ? ACT_HOLD_FREEFALL : ACT_FREEFALL;
+                if (gMarioState->action & ACT_FLAG_RIDING_SHELL) fallAction = ACT_RIDING_SHELL_FALL;
+                update_mario_sound_and_camera(gMarioState);
+                set_mario_action(gMarioState, fallAction, 0);
+            }
         }
 
         // The function can loop through many action shifts in one frame,
@@ -1783,12 +1734,12 @@ s32 execute_mario_action(UNUSED struct Object *obj) {
 
         // Both of the wind handling portions play wind audio only in
         // non-Japanese releases.
-        if (gMarioState->floor->type == SURFACE_HORIZONTAL_WIND) {
+        if (gMarioState->floorType == SURFACE_HORIZONTAL_WIND) {
             spawn_wind_particles(0, (gMarioState->floor->force << 8));
             play_sound(SOUND_ENV_WIND2, gMarioState->marioObj->header.gfx.cameraToObject);
         }
 
-        if (gMarioState->floor->type == SURFACE_VERTICAL_WIND) {
+        if (gMarioState->floorType == SURFACE_VERTICAL_WIND) {
             spawn_wind_particles(1, 0);
             play_sound(SOUND_ENV_WIND2, gMarioState->marioObj->header.gfx.cameraToObject);
         }
@@ -1800,7 +1751,7 @@ s32 execute_mario_action(UNUSED struct Object *obj) {
         u32 actGroup = gMarioState->action & ACT_GROUP_MASK;
         if ((actGroup == ACT_GROUP_STATIONARY || actGroup == ACT_GROUP_MOVING) && 
             gMarioState->floor != NULL && 
-            !SURFACE_IS_UNSAFE(gMarioState->floor->type) &&
+            !SURFACE_IS_UNSAFE(gMarioState->floorType) &&
             !mario_floor_is_slippery(gMarioState)) {
             vec3f_copy(gMarioState->lastSafePos, gMarioState->pos);
         }
@@ -1853,17 +1804,21 @@ void init_mario(void) {
     vec3s_to_vec3f(gMarioState->pos, gMarioSpawnInfo->startPos);
     vec3f_copy(gMarioState->prevPos, gMarioState->pos);
     vec3_zero(gMarioState->vel);
-    gMarioState->floorHeight =
-        find_floor(gMarioState->pos[0], gMarioState->pos[1], gMarioState->pos[2], &gMarioState->floor);
+    struct SurfaceContact floor;
+    f32 floorHeight = find_floor_hit(gMarioState->pos[0], gMarioState->pos[1], gMarioState->pos[2], &floor);
+    set_mario_floor(gMarioState, &floor, floorHeight);
 
-    if (gMarioState->pos[1] < gMarioState->floorHeight) {
+    if (floor.surface != NULL && gMarioState->pos[1] < floorHeight) {
         gMarioState->pos[1] = gMarioState->floorHeight;
     }
 
     gMarioState->marioObj->header.gfx.pos[1] = gMarioState->pos[1];
 
-    gMarioState->action =
-        (gMarioState->pos[1] <= (gMarioState->waterLevel - 100)) ? ACT_WATER_IDLE : ACT_IDLE;
+    if (gMarioState->pos[1] <= gMarioState->waterLevel - 100) {
+        gMarioState->action = ACT_WATER_IDLE;
+    } else {
+        gMarioState->action = floor.surface != NULL ? ACT_IDLE : ACT_FREEFALL;
+    }
 
     mario_reset_bodystate(gMarioState);
     update_mario_info_for_cam(gMarioState);

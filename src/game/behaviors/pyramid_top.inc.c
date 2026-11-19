@@ -51,7 +51,7 @@ void bhv_pyramid_top_spinning(void) {
         pyramidFragment->oForwardVel = random_float() * 10.0f + 20.0f;
         pyramidFragment->oMoveAngleYaw = random_u16();
         pyramidFragment->oPyramidTopFragmentsScale = 0.8f;
-        pyramidFragment->oGravity = random_float() + 2.0f;
+        pyramidFragment->oGravity = -(random_float() + 2.0f);
     }
 
     // After enough time, transition to the exploding state.
@@ -76,7 +76,7 @@ void bhv_pyramid_top_explode(void) {
         pyramidFragment->oVelY = random_float() * 80 + 20;
         pyramidFragment->oMoveAngleYaw = random_u16();
         pyramidFragment->oPyramidTopFragmentsScale = 3;
-        pyramidFragment->oGravity = random_float() * 2 + 5;
+        pyramidFragment->oGravity = -(random_float() * 2.0f + 5.0f);
     }
 
     // Deactivate the pyramid top.
@@ -114,8 +114,8 @@ void bhv_pyramid_top_loop(void) {
  * Initialize the pyramid fragment.
  */
 void bhv_pyramid_top_fragment_init(void) {
-    o->oFriction = 0.999f;
-    o->oBuoyancy = 2.0f;
+    o->oWallHitboxRadius = o->hitboxRadius;
+    o->oBounciness = -0.5f;
     o->oAnimState = 3;
     cur_obj_scale(o->oPyramidTopFragmentsScale);
 }
@@ -125,7 +125,8 @@ void bhv_pyramid_top_fragment_init(void) {
  * deactivate it.
  */
 void bhv_pyramid_top_fragment_loop(void) {
-    object_step();
+    cur_obj_update_floor_and_bounce_off_walls();
+    cur_obj_move_and_align_with_floor(60);
     o->oFaceAngleYaw += 0x1000;
     o->oFaceAnglePitch += 0x1000;
 

@@ -1524,6 +1524,7 @@ void bowser_free_update(void) {
     cur_obj_update_floor_and_walls();
     cur_obj_call_action_function(sBowserActions);
     cur_obj_move_standard(-78);
+    cur_obj_align_gfx_with_floor();
     // Jump on stage if Bowser has fallen off
     if (bowser_check_fallen_off_stage()) {
         o->oAction = BOWSER_ACT_JUMP_ONTO_STAGE;
@@ -1651,8 +1652,6 @@ void bhv_bowser_loop(void) {
             bowser_thrown_dropped_update();
             break;
     }
-    // Adjust model to the floor
-    cur_obj_align_gfx_with_floor();
 
     // Adjust opacity (when not dead)
     // Mostly for the teleport action in BitFS

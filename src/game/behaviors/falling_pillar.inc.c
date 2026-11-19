@@ -19,15 +19,6 @@ static struct ObjectHitbox sFallingPillarHitbox = {
 };
 
 /**
- * Initiates various physics params for the pillar.
- */
-void bhv_falling_pillar_init(void) {
-    o->oGravity = 0.5f;
-    o->oFriction = 0.91f;
-    o->oBuoyancy = 1.3f;
-}
-
-/**
  * Spawns 4 hitboxes with Y coordinates offset.
  */
 void bhv_falling_pillar_spawn_hitboxes(void) {
@@ -58,6 +49,11 @@ s16 bhv_falling_pillar_calculate_angle_in_front_of_mario(void) {
 void bhv_falling_pillar_loop(void) {
     s16 angleInFrontOfMario;
 
+    if (o->oAction == FALLING_PILLAR_ACT_TURNING || o->oAction == FALLING_PILLAR_ACT_FALLING) {
+        cur_obj_update_floor_and_walls();
+        cur_obj_move_standard(60);
+    }
+
     switch (o->oAction) {
         case FALLING_PILLAR_ACT_IDLE:
             // When Mario is within 1300 units of distance...
@@ -78,8 +74,6 @@ void bhv_falling_pillar_loop(void) {
             break;
 
         case FALLING_PILLAR_ACT_TURNING:
-            object_step_without_floor_orient();
-
             // Calculate angle in front of Mario and turn towards it.
             angleInFrontOfMario = bhv_falling_pillar_calculate_angle_in_front_of_mario();
             o->oFaceAngleYaw = approach_s16_symmetric(o->oFaceAngleYaw, angleInFrontOfMario, 0x400);
@@ -91,8 +85,6 @@ void bhv_falling_pillar_loop(void) {
             break;
 
         case FALLING_PILLAR_ACT_FALLING:
-            object_step_without_floor_orient();
-
             // Start falling slowly, with increasing acceleration each frame.
             o->oFallingPillarPitchAcceleration += 4.0f;
             o->oAngleVelPitch += o->oFallingPillarPitchAcceleration;

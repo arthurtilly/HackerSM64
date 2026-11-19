@@ -193,36 +193,26 @@ Gfx *create_shadow_below_xyz(Vec3f pos, s16 shadowScale, u8 shadowSolidity, s8 s
     }
 
     // The floor underneath the object.
-    struct Surface *floor = NULL;
+    struct Surface *floor;
     // The y-position of the floor (or water or lava) underneath the object.
-    f32 floorHeight = FLOOR_LOWER_LIMIT_MISC;
+    f32 floorHeight;
     f32 x = pos[0];
     f32 y = pos[1];
     f32 z = pos[2];
     s8 isPlayer   = (obj == gMarioObject);
     s8 notHeldObj = (gCurGraphNodeHeldObject == NULL);
 
-    // Attempt to use existing floors before finding a new one.
-    if (notHeldObj && isPlayer && gMarioState->floor) {
-        // The object is Mario and has a referenced floor.
+    // Mario's floor is sampled at his physics position. Animation can move the shadow across an edge.
+    if (notHeldObj && isPlayer && x == gMarioState->pos[0] && z == gMarioState->pos[2]) {
         floor       = gMarioState->floor;
         floorHeight = gMarioState->floorHeight;
-    } else if (notHeldObj && (gCurGraphNodeObject != &gMirrorMario) && obj->oFloor) {
-        // The object is not Mario but has a referenced floor.
+        shifted = FALSE;
+    } else if (notHeldObj && !isPlayer && gCurGraphNodeObject != &gMirrorMario && obj->oFloor != NULL) {
         //! Some objects only get their oFloor from bhv_init_room, which skips dynamic floors.
         floor       = obj->oFloor;
         floorHeight = obj->oFloorHeight;
     } else {
-        // The object has no referenced floor, so find a new one.
-        // gCollisionFlags |= COLLISION_FLAG_RETURN_FIRST;
         floorHeight = find_floor(x, y, z, &floor);
-
-        // No shadow if the position is OOB.
-        if (floor == NULL) {
-            return NULL;
-        }
-
-        // Skip shifting the shadow height later, since the find_floor call above uses the already shifted position.
         shifted = FALSE;
     }
 
@@ -255,6 +245,7 @@ Gfx *create_shadow_below_xyz(Vec3f pos, s16 shadowScale, u8 shadowSolidity, s8 s
             isEnvBox = TRUE;
         }
     } else { // Normal surfaces:
+        if (floor == NULL) return NULL;
         TerrainData type = floor->type;
         if (type == SURFACE_ICE) {
             // Ice floors are usually transparent.

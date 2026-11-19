@@ -314,7 +314,7 @@ struct Object {
     /*0x20C*/ const BehaviorScript *behavior;
     /*0x210*/ u32 unused2;
     /*0x214*/ struct Object *platform;
-    /*0x218*/ void *collisionData;
+    /*0x218*/ TerrainData *collisionData;
     /*0x21C*/ Mat4 transform;
     /*0x25C*/ void *respawnInfo;
 };
@@ -347,8 +347,8 @@ struct Surface {
     /*0x02*/ TerrainData force;
     /*0x04*/ s8 flags;
     /*0x05*/ RoomData room;
-    /*0x06*/ s16 lowerY;
-    /*0x08*/ s16 upperY;
+    /*0x06*/ TerrainData lowerY;
+    /*0x08*/ TerrainData upperY;
     /*0x0A*/ Vec3t vertex1;
     /*0x10*/ Vec3t vertex2;
     /*0x16*/ Vec3t vertex3;
@@ -408,7 +408,7 @@ struct MarioState {
     /*0x54*/ f32 forwardVel;
     /*0x58*/ f32 slideVelX;
     /*0x5C*/ f32 slideVelZ;
-    /*0x60*/ struct Surface *wall;
+    /*0x60*/ Bool32 hasWall;
     /*0x64*/ struct Surface *ceil;
     /*0x68*/ struct Surface *floor;
     /*0x6C*/ f32 ceilHeight;
@@ -459,6 +459,8 @@ struct MarioState {
              s16 moveYaw;
              s16 ceilYaw;
              s16 wallYaw;
+     SurfaceType floorType; // SURFACE_NULL over open space.
+   struct Normal floorNormal;
     // -- HackerSM64 MarioState fields end --
 };
 

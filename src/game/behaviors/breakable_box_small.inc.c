@@ -13,9 +13,6 @@ struct ObjectHitbox sBreakableBoxSmallHitbox = {
 };
 
 void bhv_breakable_box_small_init(void) {
-    o->oGravity = 2.5f;
-    o->oFriction = 0.99f;
-    o->oBuoyancy = 1.4f;
     cur_obj_scale(0.4f);
     obj_set_hitbox(o, &sBreakableBoxSmallHitbox);
     o->oAnimState = BREAKABLE_BOX_ANIM_STATE_CORK_BOX;
@@ -29,22 +26,27 @@ void small_breakable_box_spawn_dust(void) {
 }
 
 void small_breakable_box_act_move(void) {
-    s16 collisionFlags = object_step();
+    if (o->activeFlags & (ACTIVE_FLAG_FAR_AWAY | ACTIVE_FLAG_IN_DIFFERENT_ROOM)) return;
+
+    cur_obj_update_floor_and_walls();
+    cur_obj_move_standard(60);
+    if (cur_obj_is_near_floor()) {
+        cur_obj_accelerate_downhill();
+        cur_obj_align_gfx_with_floor();
+    }
 
     obj_attack_collided_from_other_object(o);
 
-    if (collisionFlags == OBJ_COL_FLAG_GROUNDED) {
+    if (o->oMoveFlags & OBJ_MOVE_BOUNCE) {
         cur_obj_play_sound_2(SOUND_GENERAL_SMALL_BOX_LANDING);
     }
 
-    if (collisionFlags & OBJ_COL_FLAG_GROUNDED) {
-        if (o->oForwardVel > 20.0f) {
-            cur_obj_play_sound_2(SOUND_ENV_SLIDING);
-            small_breakable_box_spawn_dust();
-        }
+    if ((o->oMoveFlags & OBJ_MOVE_MASK_ON_ANY_GROUND) && o->oForwardVel > 20.0f) {
+        cur_obj_play_sound_2(SOUND_ENV_SLIDING);
+        small_breakable_box_spawn_dust();
     }
 
-    if (collisionFlags & OBJ_COL_FLAG_HIT_WALL) {
+    if (o->oMoveFlags & (OBJ_MOVE_HIT_WALL | OBJ_MOVE_HIT_EDGE)) {
         spawn_mist_particles();
         spawn_triangle_break_particles(20, MODEL_DIRT_ANIMATION, 0.7f, 3);
         obj_spawn_yellow_coins(o, 3);
@@ -52,7 +54,7 @@ void small_breakable_box_act_move(void) {
         o->activeFlags = ACTIVE_FLAG_DEACTIVATED;
     }
 
-    obj_check_floor_death(collisionFlags, sObjFloor);
+    obj_check_floor_death();
 }
 
 void breakable_box_small_released_loop(void) {
@@ -110,6 +112,8 @@ void breakable_box_small_get_thrown(void) {
     o->oFlags &= ~OBJ_FLAG_SET_FACE_YAW_TO_MOVE_YAW;
     o->oForwardVel = 40.0f;
     o->oVelY = 20.0f;
+    o->oMoveFlags = 0;
+    cur_obj_compute_vel_xz();
     o->oBreakableBoxSmallReleased = TRUE;
     o->oBreakableBoxSmallFramesSinceReleased = 0;
     o->activeFlags &= ~ACTIVE_FLAG_DESTRUCTIVE_OBJ_DONT_DESTROY;

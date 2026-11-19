@@ -647,9 +647,7 @@ UNUSED static s32 bhv_cmd_set_int_random_from_table(void) {
 // Command 0x2A: Loads collision data for the object.
 // Usage: LOAD_COLLISION_DATA(collisionData)
 static s32 bhv_cmd_load_collision_data(void) {
-    u32 *collisionData = segmented_to_virtual(BHV_CMD_GET_VPTR(1));
-
-    gCurrentObject->collisionData = collisionData;
+    gCurrentObject->collisionData = segmented_to_virtual(BHV_CMD_GET_VPTR(1));
 
     gCurBhvCommand += 2;
     return BHV_PROC_CONTINUE;
@@ -696,19 +694,15 @@ static s32 bhv_cmd_scale(void) {
 
 
 // Command 0x30: Sets various parameters that the object uses for calculating physics.
-// Usage: SET_OBJ_PHYSICS(wallHitboxRadius, gravity, bounciness, dragStrength, friction, buoyancy, unused1, unused2)
+// Usage: SET_OBJ_PHYSICS(wallHitboxRadius, gravity, bounciness, dragStrength, buoyancy)
 static s32 bhv_cmd_set_obj_physics(void) {
-    gCurrentObject->oWallHitboxRadius = BHV_CMD_GET_1ST_S16(1);
-    gCurrentObject->oGravity = BHV_CMD_GET_2ND_S16(1) / 100.0f;
-    gCurrentObject->oBounciness = BHV_CMD_GET_1ST_S16(2) / 100.0f;
-    gCurrentObject->oDragStrength = BHV_CMD_GET_2ND_S16(2) / 100.0f;
-    gCurrentObject->oFriction = BHV_CMD_GET_1ST_S16(3) / 100.0f;
-    gCurrentObject->oBuoyancy = BHV_CMD_GET_2ND_S16(3) / 100.0f;
+    gCurrentObject->oWallHitboxRadius = BHV_CMD_GET_2ND_S16(0);
+    gCurrentObject->oGravity = BHV_CMD_GET_1ST_S16(1) / 100.0f;
+    gCurrentObject->oBounciness = BHV_CMD_GET_2ND_S16(1) / 100.0f;
+    gCurrentObject->oDragStrength = BHV_CMD_GET_1ST_S16(2) / 100.0f;
+    gCurrentObject->oBuoyancy = BHV_CMD_GET_2ND_S16(2) / 100.0f;
 
-    UNUSED f32 unused1 = BHV_CMD_GET_1ST_S16(4) / 100.0f;
-    UNUSED f32 unused2 = BHV_CMD_GET_2ND_S16(4) / 100.0f;
-
-    gCurBhvCommand += 5;
+    gCurBhvCommand += 3;
     return BHV_PROC_CONTINUE;
 }
 

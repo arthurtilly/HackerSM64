@@ -69,62 +69,13 @@ static f32 get_buoyancy(struct MarioState *m) {
     return buoyancy;
 }
 
-static u32 perform_water_full_step(struct MarioState *m, Vec3f nextPos) {
-    struct WallCollisionData wallData;
-    struct Surface *ceil, *floor;
-
-    resolve_and_return_wall_collisions(nextPos, 10.0f, 110.0f, &wallData);
-    struct Surface *wall = wallData.numWalls == 0 ? NULL : wallData.walls[0];
-    f32 floorHeight = find_floor(nextPos[0], nextPos[1], nextPos[2], &floor);
-    f32 ceilHeight = find_mario_ceil(nextPos, floorHeight, &ceil);
-
-    if (floor == NULL) {
-        return WATER_STEP_CANCELLED;
-    }
-
-    if (nextPos[1] >= floorHeight) {
-        if (ceilHeight - nextPos[1] >= 160.0f) {
-            vec3f_copy(m->pos, nextPos);
-            set_mario_floor(m, floor, floorHeight);
-
-            if (wall != NULL) {
-                return WATER_STEP_HIT_WALL;
-            } else {
-                return WATER_STEP_NONE;
-            }
-        }
-
-        if (ceilHeight - floorHeight <= 160.0f) {
-            return WATER_STEP_CANCELLED;
-        }
-
-        if (nextPos[1] >= ceilHeight - 160.0f) {
-            vec3f_set(m->pos, nextPos[0], ceilHeight - 160.0f, nextPos[2]);
-            set_mario_floor(m, floor, floorHeight);
-            return WATER_STEP_HIT_CEILING;
-        } else {
-            vec3f_set(m->pos, nextPos[0], nextPos[1], nextPos[2]);
-            set_mario_floor(m, floor, floorHeight);
-            return WATER_STEP_NONE;
-        }
-    } else {
-        if (ceilHeight - floorHeight < 160.0f) {
-            return WATER_STEP_CANCELLED;
-        }
-
-        vec3f_set(m->pos, nextPos[0], floorHeight, nextPos[2]);
-        set_mario_floor(m, floor, floorHeight);
-        return WATER_STEP_HIT_FLOOR;
-    }
-}
-
 static void apply_water_current(struct MarioState *m, Vec3f step) {
     s32 i;
     f32 whirlpoolRadius = 2000.0f;
     f32 distance, strength;
     s16 pitchToWhirlpool, yawToWhirlpool;
 
-    if (m->floor->type == SURFACE_FLOWING_WATER) {
+    if (m->floorType == SURFACE_FLOWING_WATER) {
         s16 currentAngle = m->floor->force << 8;
         f32 currentSpeed = sWaterCurrentSpeeds[m->floor->force >> 8];
 
@@ -163,32 +114,17 @@ static void apply_water_current(struct MarioState *m, Vec3f step) {
 }
 
 static u32 perform_water_step(struct MarioState *m) {
-    u32 stepResult;
-    Vec3f nextPos;
     Vec3f step;
-    struct Object *marioObj = m->marioObj;
-
-    vec3f_copy(step, m->vel);
-
-    if (m->action & ACT_FLAG_SWIMMING) {
-        apply_water_current(m, step);
-    }
-
-    nextPos[0] = m->pos[0] + step[0];
-    nextPos[1] = m->pos[1] + step[1];
-    nextPos[2] = m->pos[2] + step[2];
-
-    if (nextPos[1] > m->waterLevel - 80) {
-        nextPos[1] = m->waterLevel - 80;
+    vec3_copy(step, m->vel);
+    if (m->action & ACT_FLAG_SWIMMING) apply_water_current(m, step);
+    if (m->pos[1] + step[1] > m->waterLevel - 80) {
+        step[1] = m->waterLevel - 80 - m->pos[1];
         m->vel[1] = 0.0f;
     }
-
-    stepResult = perform_water_full_step(m, nextPos);
-
-    vec3f_copy(marioObj->header.gfx.pos, m->pos);
-    vec3s_set(marioObj->header.gfx.angle, -m->faceAngle[0], m->faceAngle[1], m->faceAngle[2]);
-
-    return stepResult;
+    s32 result = move_mario_in_water(m, step);
+    vec3f_copy(m->marioObj->header.gfx.pos, m->pos);
+    vec3s_set(m->marioObj->header.gfx.angle, -m->faceAngle[0], m->faceAngle[1], m->faceAngle[2]);
+    return result;
 }
 
 static void update_water_pitch(struct MarioState *m) {
@@ -1108,7 +1044,7 @@ static void update_metal_water_walking_speed(struct MarioState *m) {
         m->forwardVel += 1.1f;
     } else if (m->forwardVel <= targetSpeed) {
         m->forwardVel += 1.1f - m->forwardVel / 43.0f;
-    } else if (m->floor->normal.y >= 0.95f) {
+    } else if (m->floorNormal.y >= 0.95f) {
         m->forwardVel -= 1.0f;
     }
 
@@ -1159,6 +1095,10 @@ static s32 act_metal_water_standing(struct MarioState *m) {
         return set_mario_action(m, ACT_WATER_IDLE, 0);
     }
 
+    if (m->floor == NULL) {
+        return set_mario_action(m, ACT_METAL_WATER_FALLING, 0);
+    }
+
     if (m->input & INPUT_A_PRESSED) {
         return set_mario_action(m, ACT_METAL_WATER_JUMP, 0);
     }
@@ -1198,6 +1138,10 @@ static s32 act_hold_metal_water_standing(struct MarioState *m) {
 
     if (!(m->flags & MARIO_METAL_CAP)) {
         return set_mario_action(m, ACT_HOLD_WATER_IDLE, 0);
+    }
+
+    if (m->floor == NULL) {
+        return set_mario_action(m, ACT_HOLD_METAL_WATER_FALLING, 0);
     }
 
     if (m->input & INPUT_A_PRESSED) {
@@ -1361,7 +1305,7 @@ static s32 act_metal_water_falling(struct MarioState *m) {
     set_mario_animation(m, m->actionArg == 0 ? MARIO_ANIM_GENERAL_FALL : MARIO_ANIM_FALL_FROM_WATER);
     stationary_slow_down(m);
 
-    if (perform_water_step(m) & WATER_STEP_HIT_FLOOR) { // hit floor or cancelled
+    if (perform_water_step(m) == WATER_STEP_HIT_FLOOR) {
         set_mario_action(m, ACT_METAL_WATER_FALL_LAND, 0);
     }
 
@@ -1384,7 +1328,7 @@ static s32 act_hold_metal_water_falling(struct MarioState *m) {
     set_mario_animation(m, MARIO_ANIM_FALL_WITH_LIGHT_OBJ);
     stationary_slow_down(m);
 
-    if (perform_water_step(m) & WATER_STEP_HIT_FLOOR) { // hit floor or cancelled
+    if (perform_water_step(m) == WATER_STEP_HIT_FLOOR) {
         set_mario_action(m, ACT_HOLD_METAL_WATER_FALL_LAND, 0);
     }
 
@@ -1486,7 +1430,7 @@ static s32 act_hold_metal_water_fall_land(struct MarioState *m) {
 static s32 check_common_submerged_cancels(struct MarioState *m) {
     s16 waterHeight = m->waterLevel - 80;
     if (m->pos[1] > waterHeight) {
-        if (waterHeight > m->floorHeight) {
+        if (m->floor == NULL || waterHeight > m->floorHeight) {
             if (m->pos[1] - waterHeight < 50) {
                 m->pos[1] = waterHeight; // lock mario to top if the falloff isn't big enough
             } else {

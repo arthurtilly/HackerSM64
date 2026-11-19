@@ -26,23 +26,13 @@ static struct ObjectHitbox sBigBullyHitbox = {
 
 void bhv_small_bully_init(void) {
     cur_obj_init_animation(0);
-    vec3f_copy(&o->oHomeVec, &o->oPosVec);
     o->oBehParams2ndByte = BULLY_BP_SIZE_SMALL;
-    o->oGravity = 4.0f;
-    o->oFriction = 0.91f;
-    o->oBuoyancy = 1.3f;
-
     obj_set_hitbox(o, &sSmallBullyHitbox);
 }
 
 void bhv_big_bully_init(void) {
     cur_obj_init_animation(0);
-    vec3f_copy(&o->oHomeVec, &o->oPosVec);
     o->oBehParams2ndByte = BULLY_BP_SIZE_BIG;
-    o->oGravity = 5.0f;
-    o->oFriction = 0.93f;
-    o->oBuoyancy = 1.3f;
-
     obj_set_hitbox(o, &sBigBullyHitbox);
 }
 
@@ -89,7 +79,10 @@ void bully_act_chase_mario(void) {
 }
 
 void bully_act_knockback(void) {
-    if (o->oForwardVel < 10.0f && (s32) o->oVelY == 0) {
+    if (o->oMoveFlags & OBJ_MOVE_MASK_ON_GROUND) {
+        o->oForwardVel *= o->oBehParams2ndByte == BULLY_BP_SIZE_SMALL ? 0.91f : 0.93f;
+    }
+    if (o->oForwardVel < 10.0f && (o->oMoveFlags & OBJ_MOVE_ON_GROUND)) {
         o->oForwardVel = 1.0f;
         o->oBullyKBTimerAndMinionKOCounter++;
         o->oFlags |= OBJ_FLAG_SET_FACE_YAW_TO_MOVE_YAW;
@@ -114,25 +107,10 @@ void bully_act_back_up(void) {
 
     o->oForwardVel = 5.0f;
 
-    //! bully_backup_check() happens after this function, and has the potential to reset
-    //  the bully's action to BULLY_ACT_BACK_UP. Because the back up action is only
-    //  set to end when the timer EQUALS 15, if this happens on that frame, the bully
-    //  will be stuck in BULLY_ACT_BACK_UP forever until Mario hits it or its death
-    //  conditions are activated. However because its angle is set to its facing angle,
-    //  it will walk forward instead of backing up.
-
-    if (o->oTimer == 15) {
+    if (o->oTimer >= 15) {
         o->oMoveAngleYaw = o->oFaceAngleYaw;
         o->oFlags |= OBJ_FLAG_SET_FACE_YAW_TO_MOVE_YAW;
         o->oAction = BULLY_ACT_PATROL;
-    }
-}
-
-void bully_backup_check(s16 collisionFlags) {
-    if (!(collisionFlags & OBJ_COL_FLAG_NO_Y_VEL) && o->oAction != BULLY_ACT_KNOCKBACK) {
-        o->oPosX = o->oBullyPrevX;
-        o->oPosZ = o->oBullyPrevZ;
-        o->oAction = BULLY_ACT_BACK_UP;
     }
 }
 
@@ -164,11 +142,14 @@ void bully_play_stomping_sound(void) {
 }
 
 void bully_step(void) {
-    s16 collisionFlags = object_step();
-
-    bully_backup_check(collisionFlags);
+    cur_obj_update_floor_and_bounce_off_walls();
+    s32 avoidEdges = (o->oAction != BULLY_ACT_KNOCKBACK);
+    cur_obj_move_and_align_with_floor(avoidEdges ? -60 : 60);
+    if (avoidEdges && (o->oMoveFlags & OBJ_MOVE_HIT_EDGE)) {
+        o->oAction = BULLY_ACT_BACK_UP;
+    }
     bully_play_stomping_sound();
-    obj_check_floor_death(collisionFlags, sObjFloor);
+    obj_check_floor_death();
 
     if (o->oBullySubtype & BULLY_STYPE_CHILL) {
         if (o->oPosY < 1030.0f) {
@@ -210,8 +191,6 @@ void bully_act_level_death(void) {
 }
 
 void bhv_bully_loop(void) {
-    vec3f_copy(&o->oBullyPrevVec, &o->oPosVec);
-
     //! Because this function runs no matter what, Mario is able to interrupt the bully's
     //  death action by colliding with it. Since the bully hitbox is tall enough to collide
     //  with Mario even when it is under a lava floor, this can get the bully stuck OOB
@@ -284,9 +263,6 @@ void big_bully_spawn_star(void) {
 }
 
 void bhv_big_bully_with_minions_loop(void) {
-    s16 collisionFlags = 0;
-    vec3f_copy(&o->oBullyPrevVec, &o->oPosVec);
-
     bully_check_mario_collision();
 
     switch (o->oAction) {
@@ -331,12 +307,13 @@ void bhv_big_bully_with_minions_loop(void) {
             break;
 
         case BULLY_ACT_ACTIVATE_AND_FALL:
-            collisionFlags = object_step();
-            if ((collisionFlags & OBJ_COL_FLAGS_LANDED) == OBJ_COL_FLAGS_LANDED) {
+            cur_obj_update_floor_and_bounce_off_walls();
+            cur_obj_move_and_align_with_floor(60);
+            if (o->oMoveFlags & OBJ_MOVE_ON_GROUND) {
                 o->oAction = BULLY_ACT_PATROL;
             }
 
-            if (collisionFlags == OBJ_COL_FLAG_GROUNDED) {
+            if (o->oMoveFlags & OBJ_MOVE_BOUNCE) {
                 cur_obj_play_sound_2(SOUND_OBJ_THWOMP);
                 set_camera_shake_from_point(SHAKE_POS_SMALL, o->oPosX, o->oPosY, o->oPosZ);
                 spawn_mist_particles();

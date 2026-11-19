@@ -1,17 +1,9 @@
 // boulder.inc.c
 
-void bhv_big_boulder_init(void) {
-    vec3f_copy(&o->oHomeVec, &o->oPosVec);
-
-    o->oGravity = 8.0f;
-    o->oFriction = 0.999f;
-    o->oBuoyancy = 2.0f;
-}
-
 void boulder_act_1(void) {
-    s16 collisionFlags = object_step_without_floor_orient();
+    cur_obj_move_rolling();
 
-    if ((collisionFlags & OBJ_COL_FLAGS_LANDED) == OBJ_COL_FLAG_GROUNDED && o->oVelY > 10.0f) {
+    if ((o->oMoveFlags & OBJ_MOVE_BOUNCE) && o->oVelY > 10.0f) {
         cur_obj_play_sound_2(SOUND_GENERAL_GRINDEL_ROLL);
         spawn_mist_particles();
     }

@@ -99,22 +99,12 @@ void hoot_carry_step(s32 speed, UNUSED f32 xPrev, UNUSED f32 zPrev) {
 }
 
 void hoot_surface_collision(f32 xPrev, UNUSED f32 yPrev, f32 zPrev) {
-    struct Surface *floor;
-    struct WallCollisionData hitbox;
-
-    hitbox.x = o->oPosX;
-    hitbox.y = o->oPosY;
-    hitbox.z = o->oPosZ;
-    hitbox.offsetY = 10.0f;
-    hitbox.radius = 50.0f;
-
-    if (find_wall_collisions(&hitbox)) {
-        vec3f_set(&o->oPosVec, hitbox.x, hitbox.y, hitbox.z);
+    if (resolve_wall_sphere(&o->oPosVec, gVec3fY, 10.0f, 50.0f, 1.0f, NULL)) {
         gMarioObject->oInteractStatus |= INT_STATUS_MARIO_DROP_FROM_HOOT;
     }
 
-    f32 floorY = find_floor(o->oPosX, o->oPosY, o->oPosZ, &floor);
-    if (floor == NULL) {
+    f32 floorY = find_floor_height(o->oPosX, o->oPosY, o->oPosZ);
+    if (floorY == FLOOR_LOWER_LIMIT) {
         o->oPosX = xPrev;
         o->oPosZ = zPrev;
         return;

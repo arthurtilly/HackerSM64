@@ -612,7 +612,7 @@ void push_mario_out_of_object(struct MarioState *m, struct Object *obj, f32 padd
     f32 distanceSquared = (sqr(offsetX) + sqr(offsetZ));
 
     if (distanceSquared < sqr(minDistance)) {
-        struct Surface *floor;
+        struct SurfaceContact floor;
         s16 pushAngle;
         f32 newMarioX;
         f32 newMarioZ;
@@ -628,12 +628,11 @@ void push_mario_out_of_object(struct MarioState *m, struct Object *obj, f32 padd
 
         f32_find_wall_collision(&newMarioX, &m->pos[1], &newMarioZ, 60.0f, 50.0f);
 
-        f32 floorHeight = find_floor(newMarioX, m->pos[1], newMarioZ, &floor);
-        if (floor != NULL) {
-            m->pos[0] = newMarioX;
-            m->pos[2] = newMarioZ;
-            set_mario_floor(m, floor, floorHeight); // Prevent oob death
-        }
+        if (is_outside_level_bounds(newMarioX, newMarioZ)) return;
+        f32 floorHeight = find_floor_hit(newMarioX, m->pos[1], newMarioZ, &floor);
+        m->pos[0] = newMarioX;
+        m->pos[2] = newMarioZ;
+        set_mario_floor(m, &floor, floorHeight);
     }
 }
 
@@ -1755,14 +1754,9 @@ u32 interact_text(struct MarioState *m, UNUSED u32 interactType, struct Object *
 
 void check_kick_or_punch_wall(struct MarioState *m) {
     if (m->flags & (MARIO_PUNCHING | MARIO_KICKING | MARIO_TRIPPING)) {
-        struct WallCollisionData detector;
-        detector.x = m->pos[0] + 50.0f * sins(m->faceAngle[1]);
-        detector.z = m->pos[2] + 50.0f * coss(m->faceAngle[1]);
-        detector.y = m->pos[1];
-        detector.offsetY = 80.0f;
-        detector.radius = 5.0f;
-
-        if (find_wall_collisions(&detector) > 0) {
+        Vec3f pos = { m->pos[0] + 50.0f * sins(m->faceAngle[1]), m->pos[1],
+                      m->pos[2] + 50.0f * coss(m->faceAngle[1]) };
+        if (resolve_wall_sphere(pos, gVec3fY, 80.0f, 5.0f, WALL_KICK_MAX_UP, NULL)) {
             if (m->action != ACT_MOVE_PUNCHING || m->forwardVel >= 0.0f) {
                 if (m->action == ACT_PUNCHING) {
                     m->action = ACT_MOVE_PUNCHING;
@@ -1864,7 +1858,7 @@ void mario_handle_special_floors(struct MarioState *m) {
     }
 
     if (m->floor != NULL) {
-        s32 floorType = m->floor->type;
+        s32 floorType = m->floorType;
 
         switch (floorType) {
             case SURFACE_DEATH_PLANE:

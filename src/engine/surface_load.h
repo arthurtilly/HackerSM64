@@ -6,38 +6,70 @@
 #include "surface_collision.h"
 #include "types.h"
 
-#define SURFACE_VERTICAL_BUFFER 5
-
-#define NORMAL_FLOOR_THRESHOLD 0.01f
-#define NORMAL_CEIL_THRESHOLD -NORMAL_FLOOR_THRESHOLD
-
 /**
  * The size of the dynamic surface pool, in bytes.
  */
 #define DYNAMIC_SURFACE_POOL_SIZE 0x8000
 
-struct SurfaceNode {
-    struct SurfaceNode *next;
-    struct Surface *surface;
+// Nodes are in depth-first order. An interior node skips its entire subtree
+// on a miss. A leaf indexes a run of triangles in the same block.
+struct SurfaceBvhNode {
+    Vec3t min, max;
+    u16 offset;
+    u16 count;
 };
 
-enum SpatialPartitions {
-    SPATIAL_PARTITION_FLOORS,
-    SPATIAL_PARTITION_CEILS,
-    SPATIAL_PARTITION_WALLS,
-    SPATIAL_PARTITION_WATER,
-    NUM_SPATIAL_PARTITIONS
+struct SurfaceTree {
+    struct SurfaceTree *next;
+    struct Surface *surfaces;
+    u32 numNodes;
+    struct SurfaceBvhNode nodes[];
 };
 
-typedef struct SurfaceNode *SpatialPartitionCell[NUM_SPATIAL_PARTITIONS];
+struct SurfaceIndex {
+    struct SurfaceTree *first;
+    u32 bytes, numSurfaces, numNodes;
+    s32 hasWater;
+};
 
-extern SpatialPartitionCell gStaticSurfacePartition[NUM_CELLS][NUM_CELLS];
-extern SpatialPartitionCell gDynamicSurfacePartition[NUM_CELLS][NUM_CELLS];
-extern void *gCurrStaticSurfacePool;
-extern void *gDynamicSurfacePool;
-extern void *gCurrStaticSurfacePoolEnd;
-extern void *gDynamicSurfacePoolEnd;
-extern u32 gTotalStaticSurfaceData;
+struct SurfaceBounds {
+    Vec3i min, max;
+};
+
+struct SurfaceIterator {
+    struct SurfaceTree *tree;
+    u32 node;
+    struct Surface *surface, *end;
+};
+
+extern struct SurfaceIndex gStaticSurfaceIndex, gDynamicSurfaceIndex;
+
+static ALWAYS_INLINE s32 next_surface_leaf(struct SurfaceIterator *it, const struct SurfaceBounds *bounds) {
+    while (it->tree != NULL) {
+        while (it->node < it->tree->numNodes) {
+            struct SurfaceBvhNode *node = &it->tree->nodes[it->node++];
+            if (node->max[0] < bounds->min[0] || node->min[0] > bounds->max[0]
+             || node->max[2] < bounds->min[2] || node->min[2] > bounds->max[2]
+             || node->max[1] < bounds->min[1] || node->min[1] > bounds->max[1]) {
+                if (node->count == 0) it->node = node->offset;
+            } else if (node->count != 0) {
+                it->surface = it->tree->surfaces + node->offset;
+                it->end = it->surface + node->count;
+                return TRUE;
+            }
+        }
+        it->tree = it->tree->next;
+        it->node = 0;
+    }
+    return FALSE;
+}
+
+static ALWAYS_INLINE struct Surface *next_surface(struct SurfaceIterator *it, const struct SurfaceBounds *bounds) {
+    if (it->surface == it->end && !next_surface_leaf(it, bounds)) {
+        return NULL;
+    }
+    return it->surface++;
+}
 
 void alloc_surface_pools(void);
 #ifdef NO_SEGMENTED_MEMORY

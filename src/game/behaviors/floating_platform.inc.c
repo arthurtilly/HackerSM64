@@ -1,9 +1,8 @@
 // floating_platform.inc.c
 
 f32 floating_platform_find_home_y(void) {
-    struct Surface *floor;
     f32 waterLevel  = find_water_level(o->oPosX, o->oPosZ);
-    f32 floorHeight = find_floor(o->oPosX, o->oPosY, o->oPosZ, &floor);
+    f32 floorHeight = find_floor_height(o->oPosX, o->oPosY, o->oPosZ);
 
     if (waterLevel > floorHeight + o->oFloatingPlatformHeightOffset) {
         o->oFloatingPlatformIsOnFloor = FALSE;

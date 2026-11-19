@@ -3,7 +3,6 @@
 #include "sm64.h"
 #include "area.h"
 #include "engine/graph_node.h"
-#include "engine/surface_collision.h"
 #include "engine/math_util.h"
 #include "game_init.h"
 #include "geo_misc.h"
@@ -1254,8 +1253,6 @@ Gfx *geo_painting_draw(s32 callContext, struct GraphNode *node, UNUSED void *con
  * Update the painting system's local copy of Mario's current floor and position.
  */
 Gfx *geo_painting_update(s32 callContext, UNUSED struct GraphNode *node, UNUSED Mat4 mtx) {
-    struct Surface *surface;
-
     // Reset the update counter
     if (callContext != GEO_CONTEXT_RENDER) {
         gLastPaintingUpdateCounter = gAreaUpdateCounter - 1;
@@ -1265,8 +1262,7 @@ Gfx *geo_painting_update(s32 callContext, UNUSED struct GraphNode *node, UNUSED 
         gPaintingUpdateCounter = gAreaUpdateCounter;
 
         // Store Mario's position
-        find_floor(gMarioObject->oPosX, gMarioObject->oPosY, gMarioObject->oPosZ, &surface);
-        gPaintingMarioFloorType = surface->type;
+        gPaintingMarioFloorType = gMarioState->floorType;
         gPaintingMarioXPos = gMarioObject->oPosX;
         gPaintingMarioYPos = gMarioObject->oPosY;
         gPaintingMarioZPos = gMarioObject->oPosZ;

@@ -147,7 +147,6 @@
 #define /*0x168*/ oHomeY                                        OBJECT_FIELD_F32(O_HOME_Y_INDEX)
 #define /*0x16C*/ oHomeZ                                        OBJECT_FIELD_F32(O_HOME_Z_INDEX)
 /* Common fields */
-#define /*0x170*/ oFriction                                     OBJECT_FIELD_F32(0x3A)
 #define /*0x174*/ oBuoyancy                                     OBJECT_FIELD_F32(0x3B)
 #define /*0x178*/ oSoundStateID                                 OBJECT_FIELD_S32(0x3C)
 #define /*0x17C*/ oOpacity                                      OBJECT_FIELD_S32(0x3D)
@@ -371,14 +370,6 @@
 
 /* Bully (all variants) */
 #define /*0x0F4*/ oBullySubtype                   OBJECT_FIELD_S32(0x1B)
-#define /*0x0F8*/ O_BULLY_PREV_INDEX              0x1C
-#define /*0x0F8*/ O_BULLY_PREV_X_INDEX            (O_BULLY_PREV_INDEX + 0) // 0x1C
-#define /*0x0FC*/ O_BULLY_PREV_Y_INDEX            (O_BULLY_PREV_INDEX + 1) // 0x1D
-#define /*0x100*/ O_BULLY_PREV_Z_INDEX            (O_BULLY_PREV_INDEX + 2) // 0x1E
-#define /*0x0F8*/ oBullyPrevVec                   OBJECT_FIELD_F32(O_BULLY_PREV_INDEX)
-#define /*0x0F8*/ oBullyPrevX                     OBJECT_FIELD_F32(O_BULLY_PREV_X_INDEX)
-#define /*0x0FC*/ oBullyPrevY                     OBJECT_FIELD_F32(O_BULLY_PREV_Y_INDEX)
-#define /*0x100*/ oBullyPrevZ                     OBJECT_FIELD_F32(O_BULLY_PREV_Z_INDEX)
 #define /*0x104*/ oBullyKBTimerAndMinionKOCounter OBJECT_FIELD_S32(0x1F)
 #define /*0x108*/ oBullyMarioCollisionAngle       OBJECT_FIELD_S32(0x20)
 

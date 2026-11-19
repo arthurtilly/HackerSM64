@@ -4,8 +4,7 @@
  */
 
 /**
- * Initializes MIPS' physics parameters and checks if he should be active,
- * hiding him if necessary.
+ * Checks whether MIPS has a star available.
  */
 void bhv_mips_init(void) {
 #ifndef UNLOCK_ALL
@@ -31,10 +30,6 @@ void bhv_mips_init(void) {
     }
 #endif
     o->oInteractionSubtype = INT_SUBTYPE_HOLDABLE_NPC;
-
-    o->oGravity = 15.0f;
-    o->oFriction = 0.89f;
-    o->oBuoyancy = 1.2f;
 
     cur_obj_init_animation(0);
 }
@@ -79,7 +74,8 @@ s32 bhv_mips_find_furthest_waypoint_to_mario(void) {
  */
 void bhv_mips_act_wait_for_nearby_mario(void) {
     o->oForwardVel = 0.0f;
-    object_step();
+    cur_obj_update_floor_and_walls();
+    cur_obj_move_and_align_with_floor(60);
 
     // If Mario is within 500 units...
     if (is_point_within_radius_of_mario(o->oPosX, o->oPosY, o->oPosZ, 500)) {
@@ -110,7 +106,8 @@ void bhv_mips_act_follow_path(void) {
     // Update velocity and angle and do movement.
     o->oForwardVel = o->oMipsForwardVelocity;
     o->oMoveAngleYaw = o->oPathedTargetYaw;
-    s16 collisionFlags = object_step();
+    cur_obj_update_floor_and_walls();
+    cur_obj_move_and_align_with_floor(60);
 
     // If we are at the end of the path, do idle animation and wait for Mario.
     if (followStatus == PATH_REACHED_END) {
@@ -119,7 +116,7 @@ void bhv_mips_act_follow_path(void) {
     }
 
     // Play sounds during walk animation.
-    if (cur_obj_check_if_near_animation_end() && (collisionFlags & OBJ_COL_FLAG_UNDERWATER)) {
+    if (cur_obj_check_if_near_animation_end() && (o->oMoveFlags & OBJ_MOVE_MASK_IN_WATER)) {
         cur_obj_play_sound_2(SOUND_OBJ_MIPS_RABBIT_WATER);
         spawn_object(o, MODEL_NONE, bhvShallowWaterSplash);
     } else if (cur_obj_check_if_near_animation_end()) {
@@ -141,17 +138,18 @@ void bhv_mips_act_wait_for_animation_done(void) {
  * Handles MIPS falling down after being thrown.
  */
 void bhv_mips_act_fall_down(void) {
-    s16 collisionFlags = object_step();
+    cur_obj_update_floor_and_walls();
+    cur_obj_move_and_align_with_floor(60);
 
     o->header.gfx.animInfo.animFrame = 0;
 
-    if (collisionFlags & OBJ_COL_FLAG_GROUNDED) {
+    if (o->oMoveFlags & OBJ_MOVE_MASK_ON_ANY_GROUND) {
         o->oAction = MIPS_ACT_WAIT_FOR_ANIMATION_DONE;
 
         o->oFlags |= OBJ_FLAG_SET_FACE_YAW_TO_MOVE_YAW;
         o->oMoveAngleYaw = o->oFaceAngleYaw;
 
-        if (collisionFlags & OBJ_COL_FLAG_UNDERWATER) {
+        if (o->oMoveFlags & OBJ_MOVE_MASK_IN_WATER) {
             spawn_object(o, MODEL_NONE, bhvShallowWaterSplash);
         }
     }
@@ -162,7 +160,8 @@ void bhv_mips_act_fall_down(void) {
  */
 void bhv_mips_act_idle(void) {
     o->oForwardVel = 0.0f;
-    object_step();
+    cur_obj_update_floor_and_walls();
+    cur_obj_move_and_align_with_floor(60);
 
     // Spawn a star if he was just picked up for the first time.
     if (o->oMipsStarStatus == MIPS_STAR_STATUS_SHOULD_SPAWN_STAR) {

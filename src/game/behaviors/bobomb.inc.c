@@ -12,13 +12,6 @@ static struct ObjectHitbox sBobombHitbox = {
     /* hurtboxHeight:     */ 0,
 };
 
-void bhv_bobomb_init(void) {
-    o->oGravity = 2.5f;
-    o->oFriction = 0.8f;
-    o->oBuoyancy = 1.3f;
-    o->oInteractionSubtype = INT_SUBTYPE_KICKABLE;
-}
-
 void bobomb_spawn_coin(void) {
     if (!(GET_BPARAM3(o->oBehParams) & RESPAWN_INFO_TYPE_NORMAL)) {
         obj_spawn_yellow_coins(o, 1);
@@ -67,41 +60,44 @@ void bobomb_check_interactions(void) {
 void bobomb_act_patrol(void) {
     o->oForwardVel = 5.0f;
 
-    s16 collisionFlags = object_step();
+    cur_obj_update_floor_and_bounce_off_walls();
+    cur_obj_move_and_align_with_floor(60);
     if (obj_return_home_if_safe(o, o->oHomeX, o->oHomeY, o->oHomeZ, 400)
      && obj_check_if_facing_toward_angle(o->oMoveAngleYaw, o->oAngleToMario, 0x2000)) {
         o->oBobombFuseLit = TRUE;
         o->oAction = BOBOMB_ACT_CHASE_MARIO;
     }
 
-    obj_check_floor_death(collisionFlags, sObjFloor);
+    obj_check_floor_death();
 }
 
 void bobomb_act_chase_mario(void) {
     s16 animFrame = ++o->header.gfx.animInfo.animFrame;
 
     o->oForwardVel = 20.0f;
-    s16 collisionFlags = object_step();
+    cur_obj_update_floor_and_bounce_off_walls();
+    cur_obj_move_and_align_with_floor(60);
 
     if (animFrame == 5 || animFrame == 16) {
         cur_obj_play_sound_2(SOUND_OBJ_BOBOMB_WALK);
     }
 
     obj_turn_toward_object(o, gMarioObject, O_MOVE_ANGLE_YAW_INDEX, 0x800);
-    obj_check_floor_death(collisionFlags, sObjFloor);
+    obj_check_floor_death();
 }
 
 void bobomb_act_launched(void) {
-    s16 collisionFlags = object_step();
-    if ((collisionFlags & OBJ_COL_FLAG_GROUNDED) == OBJ_COL_FLAG_GROUNDED) {
+    cur_obj_update_floor_and_bounce_off_walls();
+    cur_obj_move_and_align_with_floor(60);
+    if (o->oMoveFlags & OBJ_MOVE_MASK_ON_ANY_GROUND) {
         o->oAction = BOBOMB_ACT_EXPLODE;
     }
 }
 
-void generic_bobomb_free_loop(void) {
+void bobomb_free_loop(void) {
     switch (o->oAction) {
         case BOBOMB_ACT_PATROL:
-            bobomb_act_patrol();
+            if (o->oBehParams2ndByte == BOBOMB_BP_STYPE_GENERIC) bobomb_act_patrol();
             break;
 
         case BOBOMB_ACT_LAUNCHED:
@@ -109,7 +105,7 @@ void generic_bobomb_free_loop(void) {
             break;
 
         case BOBOMB_ACT_CHASE_MARIO:
-            bobomb_act_chase_mario();
+            if (o->oBehParams2ndByte == BOBOMB_BP_STYPE_GENERIC) bobomb_act_chase_mario();
             break;
 
         case BOBOMB_ACT_EXPLODE:
@@ -131,44 +127,7 @@ void generic_bobomb_free_loop(void) {
     bobomb_check_interactions();
 
     if (o->oBobombFuseTimer > 150) {
-        o->oAction = 3;
-    }
-}
-
-void stationary_bobomb_free_loop(void) {
-    switch (o->oAction) {
-        case BOBOMB_ACT_LAUNCHED:
-            bobomb_act_launched();
-            break;
-
-        case BOBOMB_ACT_EXPLODE:
-            bobomb_act_explode();
-            break;
-
-        case OBJ_ACT_LAVA_DEATH:
-            if (obj_lava_death()) {
-                create_respawner(MODEL_BLACK_BOBOMB, bhvBobomb, 3000);
-            }
-            break;
-
-        case OBJ_ACT_DEATH_PLANE_DEATH:
-            o->activeFlags = ACTIVE_FLAG_DEACTIVATED;
-            create_respawner(MODEL_BLACK_BOBOMB, bhvBobomb, 3000);
-            break;
-    }
-
-    bobomb_check_interactions();
-
-    if (o->oBobombFuseTimer > 150) {
-        o->oAction = 3;
-    }
-}
-
-void bobomb_free_loop(void) {
-    if (o->oBehParams2ndByte == BOBOMB_BP_STYPE_GENERIC) {
-        generic_bobomb_free_loop();
-    } else {
-        stationary_bobomb_free_loop();
+        o->oAction = BOBOMB_ACT_EXPLODE;
     }
 }
 
@@ -282,19 +241,11 @@ void bhv_bobomb_fuse_smoke_init(void) {
     cur_obj_scale(1.2f);
 }
 
-void bhv_bobomb_buddy_init(void) {
-    o->oGravity = 2.5f;
-    o->oFriction = 0.8f;
-    o->oBuoyancy = 1.3f;
-    o->oInteractionSubtype = INT_SUBTYPE_NPC;
-}
-
 void bobomb_buddy_act_idle(void) {
     s16 animFrame = o->header.gfx.animInfo.animFrame;
 
-    // vec3f_copy(&o->oBobombBuddyPosCopyVec, &o->oPosVec);
-
-    object_step();
+    cur_obj_update_floor_and_bounce_off_walls();
+    cur_obj_move_and_align_with_floor(60);
 
     if (animFrame == 5 || animFrame == 16) {
         cur_obj_play_sound_2(SOUND_OBJ_BOBOMB_WALK);

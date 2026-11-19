@@ -157,19 +157,15 @@ void print_mapinfo(void) {
     struct Surface *pfloor;
     UNUSED f32 bgY;   // unused in EU
     UNUSED f32 water; // unused in EU
-    UNUSED s32 area;  // unused in EU
     UNUSED s32 angY;  // unused in EU
 
     angY = gCurrentObject->oMoveAngleYaw / 182.044000;
-    area = ((s32) gCurrentObject->oPosX + 0x2000) / 1024
-           + ((s32) gCurrentObject->oPosZ + 0x2000) / 1024 * 16;
-
     bgY = find_floor(gCurrentObject->oPosX, gCurrentObject->oPosY, gCurrentObject->oPosZ, &pfloor);
     water = find_water_level(gCurrentObject->oPosX, gCurrentObject->oPosZ);
 
     print_debug_top_down_normal("mapinfo", 0);
 #ifndef VERSION_EU
-    print_debug_top_down_mapinfo("area %x", area);
+    print_debug_top_down_mapinfo("area %x", gCurrAreaIndex);
     print_debug_top_down_mapinfo("wx   %d", gCurrentObject->oPosX);
     //! Fat finger: programmer hit tab instead of space. Japanese
     // thumb shift keyboards had the tab key next to the spacebar,
@@ -196,7 +192,7 @@ void print_checkinfo(void) {
 }
 
 void print_surfaceinfo(void) {
-    debug_surface_list_info(gMarioObject->oPosX, gMarioObject->oPosZ);
+    debug_surface_info();
 }
 
 void print_stageinfo(void) {
